@@ -70,7 +70,7 @@ starts again for each instance.
 | `List A` | An array |
 | `Sigma (x : A) B` | `{"witness": w, "payload": p}`. The payload type is `B` at the witness. |
 | `PathP (fun i => A) a b`, a body without `i` | `{"refl": a}` (rule 5). A point of a Pi type or a universe is its printed term, as a string. `Path A a b` is `PathP (fun _ => A) a b`. |
-| `PathP (fun i => A) a b`, a body with `i` | `{"from": a, "to": b, "term": t}` (rule 6). `t` is the printed path term, as a string. A `transp` that does not compute stays in `t` as `transp (fun j => A) phi a`. |
+| `PathP (fun i => A) a b`, a body with `i` | `{"from": a, "to": b, "term": t}` (rule 6). `t` is the printed path term, as a string. A `transp` that does not compute stays in `t` as `transp (fun j => A) phi a`. An `hcomp` that does not compute stays in `t` as `hcomp A phi (fun i => [ k -> u, ... ]) u0`. |
 | A family whose constructors have no fields | The constructor name, as a string |
 | A family with one constructor | An object of the fields |
 | Any other family | `{"tag": "name", ...}` with the fields of that constructor |

@@ -69,6 +69,7 @@ typedef enum {
   RULE_CONG,
   RULE_FUNEXT,
   RULE_TRANSP,
+  RULE_HCOMP,
   RULE_NAT2,
   RULE_FLAG_IF
 } Rule;
@@ -123,6 +124,7 @@ static const Builtin BUILTINS[] = {
   {"cong", 2, RULE_CONG, OP_INTERVAL, OP_NAT, 0},
   {"funExt", 1, RULE_FUNEXT, OP_INTERVAL, OP_NAT, 0},
   {"transp", 3, RULE_TRANSP, OP_TRANSP, OP_NAT, 0},
+  {"hcomp", 4, RULE_HCOMP, OP_HCOMP, OP_NAT, 0},
   {"natAdd", 2, RULE_NAT2, OP_NAT_ADD, OP_NAT, 0},
   {"natSub", 2, RULE_NAT2, OP_NAT_SUB, OP_NAT, 0},
   {"natMul", 2, RULE_NAT2, OP_NAT_MUL, OP_NAT, 0},
@@ -1030,6 +1032,256 @@ static const Core *rule_transp(Call *k) {
   return op3(c, OP_TRANSP, 0, 3, core_bind(c, CORE_PLAM, path_binder(k->args[0]->name), NULL, line), phi, a);
 }
 
+/* A branch `k -> t` of a system: the core of its key, the face normal
+   form of the key and the core of its body (under the tube binder). */
+typedef struct {
+  const Term *term;
+  const Core *key;
+  const Value *face;
+  const Core *body;
+} Branch;
+
+static uint32_t system_size(const Term *sys) {
+  uint32_t n = 0;
+  for (; sys != NULL && sys->left != NULL; sys = sys->right)
+    n++;
+  return n;
+}
+
+/* The body core BODY at the interval value R, in the env E. */
+static const Value *branch_at(Checker *c, const Env *e, const Core *body, const Value *r) {
+  const Env *with = env_push(c->m, e, r);
+  return with == NULL ? NULL : eval_core(c->m, with, body);
+}
+
+/* Split disjunctive keys before elaboration: inferred arguments can be
+   different on each conjunction, so each one needs its own body core. */
+static Branch *split_branches(Checker *c, const Branch *bs, uint32_t n, uint32_t *count) {
+  Branch *out;
+  Value *face;
+  uint32_t i;
+  uint32_t j;
+  uint32_t k = 0;
+  *count = 0;
+  for (i = 0; i < n; i++)
+    *count += bs[i].face->conj_count > 0 ? bs[i].face->conj_count : 1u;
+  out = arena_alloc(c->m->arena, ((size_t)*count + 1u) * sizeof *out);
+  if (out == NULL) {
+    FAIL(c, "OOM", "out of memory");
+    return NULL;
+  }
+  for (i = 0; i < n; i++) {
+    if (bs[i].face->conj_count <= 1u) {
+      out[k++] = bs[i];
+      continue;
+    }
+    for (j = 0; j < bs[i].face->conj_count; j++) {
+      face = arena_alloc(c->m->arena, sizeof *face);
+      if (face == NULL) {
+        FAIL(c, "OOM", "out of memory");
+        return NULL;
+      }
+      *face = *bs[i].face;
+      face->conj = &bs[i].face->conj[j];
+      face->conj_count = 1;
+      out[k] = bs[i];
+      out[k].face = face;
+      out[k].key = quote_value(c->m, c->level, face);
+      if (out[k].key == NULL)
+        return NULL;
+      k++;
+    }
+  }
+  return out;
+}
+
+/* The body of B against A, with the tube binder NAME, under its single
+   conjunction. A key with no conjunction checks in the plain context. */
+static const Core *hcomp_branch(Checker *c, const char *name, const Core *a, const Branch *b) {
+  const Env *saved = c->env;
+  const Scope *scope = c->scope;
+  const Scope *s;
+  Scope *copy;
+  const Scope **tail;
+  const Scope *acted;
+  const Core *type;
+  const Env *e;
+  const Core *core = NULL;
+  const Core *one;
+  uint32_t n = b->face->conj_count > 0 ? b->face->conj_count : 1u;
+  uint32_t j;
+  for (j = 0; j < n; j++) {
+    e = saved;
+    if (b->face->conj_count > 0 && !env_face(c->m, saved, &b->face->conj[j], &e))
+      return NULL;
+    acted = NULL;
+    tail = &acted;
+    for (s = scope; s != NULL; s = s->next) {
+      type = quote_value(c->m, c->level, s->type);
+      copy = arena_alloc(c->m->arena, sizeof *copy);
+      if (type == NULL || copy == NULL)
+        return nul(c->m->diag->set ? 0 : FAIL(c, "OOM", "out of memory"));
+      *copy = *s;
+      copy->type = eval_core(c->m, e, type);
+      if (copy->type == NULL)
+        return NULL;
+      *tail = copy;
+      tail = &copy->next;
+    }
+    *tail = NULL;
+    c->scope = acted;
+    c->env = e;
+    if (!push_interval(c, name)) {
+      c->env = saved;
+      c->scope = scope;
+      return NULL;
+    }
+    one = check(c, b->term->right, eval_core(c->m, e, a));
+    pop(c);
+    c->env = saved;
+    c->scope = scope;
+    if (one == NULL)
+      return NULL;
+    core = core == NULL ? one : core;
+  }
+  return core;
+}
+
+/* SYSTEM_OVERLAP: the branches X and Y agree at a fresh i on each
+   conjunction of JOINT, the meet of their faces. */
+static int hcomp_overlap(Checker *c, const char *name, const Value *joint, const Branch *x, const Branch *y) {
+  const Value *i = val_ivar(c->m, c->level);
+  const Env *e = NULL;
+  const Value *vx;
+  const Value *vy;
+  const char *sx;
+  const char *sy;
+  uint32_t j;
+  if (joint == NULL)
+    return 0;
+  for (j = 0; j < joint->conj_count; j++) {
+    if (!env_face(c->m, c->env, &joint->conj[j], &e))
+      return 0;
+    vx = branch_at(c, e, x->body, i);
+    vy = branch_at(c, e, y->body, i);
+    if (vx == NULL || vy == NULL)
+      return 0;
+    if (!conv_values(c->m, c->level + 1u, vx, vy)) {
+      if (!push_interval(c, path_binder(name)))
+        return 0;
+      sx = show(c, vx);
+      sy = show(c, vy);
+      pop(c);
+      return FAIL(c, "SYSTEM_OVERLAP", "the branches for %s and %s must agree where both keys hold, but they are %s and %s", show(c, here(c, x->key)), show(c, here(c, y->key)), sx, sy);
+    }
+  }
+  return 1;
+}
+
+/* HCOMP_CAP: on each conjunction of the face of B, B at i0 is the base U0. */
+static int hcomp_cap(Checker *c, const Core *u0, const Branch *b) {
+  const Env *e = NULL;
+  const Value *at0;
+  const Value *base;
+  uint32_t j;
+  for (j = 0; j < b->face->conj_count; j++) {
+    if (!env_face(c->m, c->env, &b->face->conj[j], &e))
+      return 0;
+    at0 = branch_at(c, e, b->body, val_iend(c->m, 0));
+    base = eval_core(c->m, e, u0);
+    if (at0 == NULL || base == NULL)
+      return 0;
+    if (!conv_values(c->m, c->level, at0, base))
+      return FAIL(c, "HCOMP_CAP", "the base of hcomp must be the branch for %s at i0, but the base is %s and the branch is %s at i0", show(c, here(c, b->key)), show(c, base), show(c, at0));
+  }
+  return 1;
+}
+
+/* hcomp A phi (fun i => [ k0 -> t0, ... ]) u0, with phi : I, each key
+   k : I in the outer context, u0 : A and each branch t : A for i : I where
+   its key holds (S2 R2 (a)), of type A. The keys cover phi (SYSTEM_COVER),
+   two branches agree where both keys hold (SYSTEM_OVERLAP) and each branch
+   at i0 is u0 (HCOMP_CAP). Hcomp at a universe is Glue (S3). A face acts
+   on both the env values and the local scope types. */
+static const Core *rule_hcomp(Call *k) {
+  Checker *c = k->c;
+  uint64_t level = 0;
+  const Term *tube = k->args[2];
+  const Core *a = check_type(c, k->args[0], &level);
+  const Value *av = here(c, a);
+  const Core *phi;
+  const Core *u0;
+  const Core *args[4];
+  const Core **sys;
+  const Value *join;
+  const Value *pf;
+  const Term *cell;
+  Branch *bs;
+  uint32_t n;
+  uint32_t count;
+  uint32_t i;
+  uint32_t j;
+  if (av == NULL)
+    return NULL;
+  if (av->kind == VAL_UNIV)
+    return nul(FAIL(c, "HCOMP_UNIVERSE", "hcomp at the universe %s needs Glue, which is not in this stage (S3)", show(c, av)));
+  phi = check(c, k->args[1], interval_type(c));
+  if (phi == NULL)
+    return NULL;
+  if (tube->kind != TERM_LAM || (tube->left != NULL && !is_interval(c, tube->left)) || tube->right == NULL || tube->right->kind != TERM_SYSTEM)
+    return nul(FAIL(c, "TYPE_MISMATCH", "the tube of hcomp must be a system abstraction fun (i : I) => [ phi -> t, ... ]"));
+  n = system_size(tube->right);
+  bs = arena_alloc(c->m->arena, ((size_t)n + 1u) * sizeof *bs);
+  if (bs == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  join = val_iend(c->m, 0);
+  for (cell = tube->right, i = 0; i < n; cell = cell->right, i++) {
+    bs[i].term = cell->left;
+    bs[i].key = check(c, cell->left->left, interval_type(c));
+    bs[i].face = face_norm(c->m, here(c, bs[i].key));
+    if (bs[i].face == NULL)
+      return NULL;
+    join = face_join(c->m, join, bs[i].face);
+  }
+  pf = face_norm(c->m, here(c, phi));
+  if (join == NULL || pf == NULL)
+    return NULL;
+  if (!conv_values(c->m, c->level, join, pf))
+    return nul(FAIL(c, "SYSTEM_COVER", "the keys of the system must cover %s, but their join is %s", show(c, pf), show(c, join)));
+  bs = split_branches(c, bs, n, &count);
+  if (bs == NULL)
+    return NULL;
+  n = count;
+  sys = arena_alloc(c->m->arena, (2u * (size_t)n + 1u) * sizeof *sys);
+  if (sys == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  for (i = 0; i < n; i++) {
+    bs[i].body = hcomp_branch(c, tube->name, a, &bs[i]);
+    if (bs[i].body == NULL)
+      return NULL;
+  }
+  for (i = 0; i < n; i++)
+    for (j = i + 1u; j < n; j++)
+      if (!hcomp_overlap(c, tube->name, face_meet(c->m, bs[i].face, bs[j].face), &bs[i], &bs[j]))
+        return NULL;
+  u0 = check(c, k->args[3], av);
+  if (u0 == NULL)
+    return NULL;
+  for (i = 0; i < n; i++)
+    if (!hcomp_cap(c, u0, &bs[i]))
+      return NULL;
+  for (i = 0; i < n; i++) {
+    sys[2u * i] = bs[i].key;
+    sys[2u * i + 1u] = core_bind(c, CORE_PLAM, path_binder(tube->name), NULL, bs[i].body);
+  }
+  args[0] = a;
+  args[1] = phi;
+  args[2] = core_op(c, OP_SYSTEM, 0, 0, sys, 2u * n);
+  args[3] = u0;
+  k->type = av;
+  return core_op(c, OP_HCOMP, 0, 0, args, 4);
+}
+
 static const Core *rule_nat2(Call *k) {
   Checker *c = k->c;
   const Core *x = check(c, k->args[0], nat_type(c));
@@ -1112,6 +1364,8 @@ static const Core *rule(Call *k) {
     return rule_funext(k);
   case RULE_TRANSP:
     return rule_transp(k);
+  case RULE_HCOMP:
+    return rule_hcomp(k);
   case RULE_NAT2:
     return rule_nat2(k);
   case RULE_FLAG_IF:
@@ -1532,6 +1786,9 @@ static const Core *elab_inner(Checker *c, const Term *t, const Value *hint, cons
     return elab_ival(c, t, CORE_IMEET, hint, type);
   case TERM_IJOIN:
     return elab_ival(c, t, CORE_IJOIN, hint, type);
+  case TERM_SYSTEM:
+  case TERM_BRANCH:
+    return nul(FAIL(c, "TYPE_MISMATCH", "a system [ phi -> t, ... ] is only the tube of hcomp, fun (i : I) => [ ... ]"));
   }
   return NULL;
 }

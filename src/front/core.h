@@ -60,7 +60,9 @@ typedef enum {
   OP_FLAG_IF,
   OP_PROJ,
   OP_INTERVAL, /* the sort I: never a type, only the type of an interval term */
-  OP_TRANSP    /* transp L phi a: L a line (a path value in U), phi a face */
+  OP_TRANSP,   /* transp L phi a: L a line (a path value in U), phi a face */
+  OP_SYSTEM,   /* a system: key0, branch0, key1, branch1, ...; each branch a PLAM */
+  OP_HCOMP     /* hcomp A phi sys u0: phi a face, sys an OP_SYSTEM value */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -142,7 +144,22 @@ typedef enum {
   CLOS_PI_COD,    /* PLAM: i |-> B(i) (x'(i)); args: L, phi, x */
   CLOS_TRANSP_PI, /* LAM: x |-> transp B' phi (f (x'(i0))); args: L, phi, f */
   CLOS_SIGMA_DOM, /* PLAM: j |-> the domain of L(r /\ j); args: L, r */
-  CLOS_SIGMA_COD  /* PLAM: i |-> B(i) (a'(i)); args: L, phi, u */
+  CLOS_SIGMA_COD, /* PLAM: i |-> B(i) (a'(i)); args: L, phi, u */
+  /* S2b. A SYS tag is the map of one branch b of a system. */
+  CLOS_CONST,          /* PLAM: _ |-> v; args: v */
+  CLOS_SYS_APP,        /* PLAM: i |-> b i x; args: b, x */
+  CLOS_SYS_PAPP,       /* PLAM: i |-> b i @ j; args: b, j, a, b1 (the ends) */
+  CLOS_SYS_SIGMA,      /* PLAM: i |-> the part FIELD of b i; args: b */
+  CLOS_SYS_ARG,        /* PLAM: i |-> the argument FIELD of b i; args: b */
+  CLOS_SYS_MEET,       /* PLAM: j |-> b (i /\ j); args: b, i */
+  CLOS_COMP_BRANCH,    /* PLAM: i |-> transp (fun j => L (i \/ j)) i (b i); args: b, L */
+  CLOS_LINE_JOIN,      /* PLAM: j |-> L (i \/ j); args: L, i */
+  CLOS_HCOMP_PI,       /* LAM: x |-> hcomp (B x) phi (sys x) (u0 x); args: A, phi, sys, u0 */
+  CLOS_HCOMP_PATHP,    /* PLAM: j |-> hcomp (A j) ...; args: A, phi, sys, u0 */
+  CLOS_SIGMA_FILL_COD, /* PLAM: i |-> B (hfill A phi sys u i); args: A, phi, sys, u */
+  CLOS_TRANSP_PATHP,   /* PLAM: r |-> comp of p0 @ r (rule 7); args: L, phi, p0 */
+  CLOS_PATHP_LINE,     /* PLAM: i |-> L(i) at r; args: L, r */
+  CLOS_PATHP_END       /* PLAM: i |-> the end FIELD of L(i); args: L */
 } ClosTag;
 
 typedef struct Value Value;
@@ -242,6 +259,9 @@ int ival_is_end(const Value *v, int side);
    literal and its negation goes, as the face of such a conjunction is
    empty. Face equality is then interval value equality. */
 const Value *face_norm(Machine *m, const Value *phi);
+/* The face normal form of A \/ B and of A /\ B. */
+const Value *face_join(Machine *m, const Value *a, const Value *b);
+const Value *face_meet(Machine *m, const Value *a, const Value *b);
 /* The face map: R with the interval variable at LEVEL set to the end SIDE. */
 const Value *ival_face(Machine *m, const Value *r, uint32_t level, int side);
 /* The face map of the conjunction C on each interval value of ENV. The

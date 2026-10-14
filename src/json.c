@@ -212,6 +212,8 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_PACK:
   case OP_INTERVAL:
   case OP_TRANSP:
+  case OP_SYSTEM:
+  case OP_HCOMP:
   case OP_CTOR:
   case OP_FIRST:
   case OP_SECOND:

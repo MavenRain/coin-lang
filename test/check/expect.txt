@@ -35,3 +35,8 @@ pathp-level.lang TYPE_MISMATCH
 transp-line.lang TRANSP_LINE
 face-sort.lang TYPE_MISMATCH
 j-refl-conv.lang PATH_END
+system-cover.lang SYSTEM_COVER
+system-overlap.lang SYSTEM_OVERLAP
+hcomp-cap.lang HCOMP_CAP
+hcomp-universe.lang HCOMP_UNIVERSE
+trans-unit.lang PATH_UIP

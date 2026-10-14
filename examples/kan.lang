@@ -23,3 +23,21 @@ def evPair : Nat := first (transp (fun (_ : I) => Prod Nat Nat) i0 (pair 3 4))
 def fillT : PathP (fun (i : I) => (p : Path (Type 0) Nat Nat) -> p @ i) (fun (p : Path (Type 0) Nat Nat) => 0)
     (fun (p : Path (Type 0) Nat Nat) => transport Nat Nat p 0) :=
   fun (i : I) => fun (p : Path (Type 0) Nat Nat) => transp (fun (j : I) => p @ (i /\ j)) (~i) 0
+-- Kan operations (S2b): trans by hcomp, the hcomp rules at Pi and in data,
+-- transport in a Path line (rule 7) and a contradictory face.
+def transEnd : (A : Type 0) -> (x : A) -> (y : A) -> (z : A) -> (p : Path A x y) -> (q : Path A y z) ->
+  Path A ((trans A x y z p q) @ i1) z :=
+  fun (A : Type 0) => fun (x : A) => fun (y : A) => fun (z : A) => fun (p : Path A x y) => fun (q : Path A y z) => refl
+def transNat : Path Nat 3 3 := trans Nat 3 3 3 trNat trNat
+def evTrans : Nat := (trans Nat 3 3 3 trNat trNat) @ i1
+def transportPathP : (A : Type 0) -> (x : A) -> (y : A) -> (r : Path A x y) -> (p : Path A x x) ->
+  Path A ((transp (fun (i : I) => Path A (r @ i) (r @ i)) i0 p) @ i0) y :=
+  fun (A : Type 0) => fun (x : A) => fun (y : A) => fun (r : Path A x y) => fun (p : Path A x x) => refl
+def hcompPi : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (h : Path (A -> B) f f) ->
+  Path (Path (A -> B) f f)
+    (fun (j : I) => hcomp (A -> B) (~j \/ j) (fun (i : I) => [ ~j -> f, j -> h @ i ]) (h @ j))
+    (fun (j : I) => fun (x : A) => hcomp B (~j \/ j) (fun (i : I) => [ ~j -> f x, j -> (h @ i) x ]) ((h @ j) x)) :=
+  fun (A : Type 0) => fun (B : Type 0) => fun (f : A -> B) => fun (h : Path (A -> B) f f) => refl
+-- The face k \/ (j /\ ~j) is k: the key k covers it.
+def faceView : Path (Path Nat 3 3) (fun (k : I) => 3) (fun (k : I) => 3) :=
+  fun (j : I) => fun (k : I) => hcomp Nat (k \/ (j /\ ~j)) (fun (i : I) => [ k -> 3 ]) 3

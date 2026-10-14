@@ -85,8 +85,10 @@ S1 closed both:
   `sym`, `cong` and `funExt` are builtins. `trans` and `transport` come
   back in S2, with `hcomp` and `transp`. S2a: `transp` is a builtin with
   rules for the universe, the data formers, Pi and Sigma. `transport`, `subst`, `J` and `JRefl`
-  are library defs in `domain/domain.lang`. `hcomp`, `trans` and the
-  PathP rule of `transp` come in S2b.
+  are library defs in `domain/domain.lang`. S2b: `hcomp A phi (fun (i :
+  I) => [ k -> t, ... ]) u0` is a builtin with rules for a true face, Pi,
+  Sigma, PathP and the data formers, and `transp` has the PathP rule.
+  `trans` is a library def by `hcomp`. S2 is done.
 
 ## 4. The cubical kernel
 
