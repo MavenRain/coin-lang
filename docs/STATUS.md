@@ -69,3 +69,40 @@ binder the line name of `Path`, which is `_`. A printed path term was then
 (`path_binder` in `src/front/check.c`). `evBack` in `examples/paths.lang`
 checks it through `test/json/paths.json`. The mutants ran before this fix;
 the fix changes no mutant site.
+
+## S2a
+
+S2a (transport) is complete. The build has the builtin `transp (fun i =>
+A) phi a`, with these rules: `phi` true gives `a`; a line in the universe
+gives `a`; a line of a data former goes into the arguments; a Pi line
+gives a function that transports its argument back to `i0`; a Sigma line
+transports the first part, and the second part along the fill of the
+first part. A `transp` that does not compute is a stuck term
+(`OP_TRANSP`). The checker refuses a line that is not constant where `phi`
+holds (`TRANSP_LINE`). `domain/domain.lang` adds `transport`, `subst`, `J`
+and `JRefl`. `JRefl` is a path, not a conversion (O11). `hcomp`, `trans`
+and the PathP rule of `transp` are S2b.
+
+Gate: `make -B check` is GREEN at examples 12, parse 10, check 37, evals 29,
+json 12, build refusals 2, regressions 6, printer 2, path regressions 7
+(0 failed). The clang `-Wswitch-enum` pass is clean.
+
+Tests: `examples/kan.lang` and `test/json/kan.json`; the check refusals
+`transp-line`, `face-sort` and `j-refl-conv`; the evals `kan evPi` and
+`kan evPair`; the C round-trip case `stuck transport fill` in
+`test/path-regressions.c` (also `fillT` in `examples/kan.lang`).
+
+Mutants: one at a time, `make -B` for each build. Each file was restored and
+its `shasum` was confirmed. Each kill came from a test, not from a compile
+error.
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| K1 | `transp`: no rule for `phi` true | each example (`JRefl` in `domain/domain.lang` has the wrong end at `i1`), `kan.lang` |
+| K2 | `rule_transp`: no check that the line is constant | `transp-line` |
+| K3 | `transp`: a line that is constant in `i` gives the base (regularity) | `j-refl-conv` |
+| K4 | Pi rule: `f x`, not `f` of `x` transported back to `i0` | `kan.lang` (`transportPi`), `kan evPi`, `kan evPair`, `kan.json` |
+| K5 | Sigma rule: the second part along `B i (fst a)`, not the fill | `kan.lang` (`transportSigma`), `kan evPi`, `kan evPair`, `kan.json` |
+
+K3 is a consistent extension (regularity), as M5a was in S1. No accepted def
+can kill it. Only a refusal can: `j-refl-conv` must stay refused.

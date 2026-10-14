@@ -59,7 +59,8 @@ typedef enum {
   OP_NAT_LE,
   OP_FLAG_IF,
   OP_PROJ,
-  OP_INTERVAL /* the sort I: never a type, only the type of an interval term */
+  OP_INTERVAL, /* the sort I: never a type, only the type of an interval term */
+  OP_TRANSP    /* transp L phi a: L a line (a path value in U), phi a face */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -131,6 +132,19 @@ typedef struct {
   uint32_t count;
 } IConj;
 
+/* The closure of a LAM or PLAM value (R11 (a)). CLOS_CORE is the S1 shape
+   (env + body). Each other tag is a closure of a Kan rule: ARGS holds its
+   values, L is the line and phi the face. */
+typedef enum {
+  CLOS_CORE,
+  CLOS_LINE_PART, /* PLAM: r |-> the type argument FIELD of L(r); args: L */
+  CLOS_PI_DOM,    /* PLAM: j |-> the domain of L(r \/ ~j); args: L, r */
+  CLOS_PI_COD,    /* PLAM: i |-> B(i) (x'(i)); args: L, phi, x */
+  CLOS_TRANSP_PI, /* LAM: x |-> transp B' phi (f (x'(i0))); args: L, phi, f */
+  CLOS_SIGMA_DOM, /* PLAM: j |-> the domain of L(r /\ j); args: L, r */
+  CLOS_SIGMA_COD  /* PLAM: i |-> B(i) (a'(i)); args: L, phi, u */
+} ClosTag;
+
 typedef struct Value Value;
 typedef struct Env Env;
 
@@ -153,6 +167,7 @@ struct Value {
   const Value *arg; /* APP, PAPP: the argument. A PI with no body: the codomain. */
   const Env *env;   /* LAM, PI, SIGMA, PLAM, PATHP: the closure */
   const Core *body;
+  ClosTag tag;      /* LAM, PLAM: CLOS_CORE, or a Kan rule closure */
   /* IVAL: the join of CONJ_COUNT conjunctions, in a canonical order, with
      no conjunction that contains another. i0 has no conjunction; i1 has
      one empty conjunction. */
@@ -210,6 +225,7 @@ typedef struct {
   unsigned depth;
   uint64_t fuel;
   int overflowed;
+  uint32_t fresh; /* the count of fresh levels for the Kan head test */
 } Machine;
 
 /* Each function returns NULL (or 0) after a diagnostic. A NULL input gives a
@@ -220,6 +236,18 @@ const Value *val_var(Machine *m, uint32_t level);
 const Value *val_ivar(Machine *m, uint32_t level);
 /* i0 when SIDE is 0, else i1. */
 const Value *val_iend(Machine *m, int side);
+/* 1 when V is the interval value i0 (SIDE 0) or i1 (SIDE 1). */
+int ival_is_end(const Value *v, int side);
+/* The face normal form of PHI (R1 (a)): each conjunction that holds a
+   literal and its negation goes, as the face of such a conjunction is
+   empty. Face equality is then interval value equality. */
+const Value *face_norm(Machine *m, const Value *phi);
+/* The face map: R with the interval variable at LEVEL set to the end SIDE. */
+const Value *ival_face(Machine *m, const Value *r, uint32_t level, int side);
+/* The face map of the conjunction C on each interval value of ENV. The
+   checker context binds only variables, so this is the act of C on the
+   context (S1 R5 (a)). Returns 0 after a diagnostic. */
+int env_face(Machine *m, const Env *env, const IConj *c, const Env **out);
 /* P @ R. A and B are the ends of P (NULL only in a value that conversion
    alone reads). A neutral P at i0 gives A, at i1 gives B. */
 const Value *path_apply(Machine *m, const Value *p, const Value *r, const Value *a, const Value *b);

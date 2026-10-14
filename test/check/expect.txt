@@ -32,3 +32,6 @@ interval-path.lang INTERVAL_TYPE
 path-level.lang TYPE_MISMATCH
 path-sym.lang PATH_UIP
 pathp-level.lang TYPE_MISMATCH
+transp-line.lang TRANSP_LINE
+face-sort.lang TYPE_MISMATCH
+j-refl-conv.lang PATH_END

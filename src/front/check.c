@@ -68,6 +68,7 @@ typedef enum {
   RULE_SYM,
   RULE_CONG,
   RULE_FUNEXT,
+  RULE_TRANSP,
   RULE_NAT2,
   RULE_FLAG_IF
 } Rule;
@@ -121,6 +122,7 @@ static const Builtin BUILTINS[] = {
   {"sym", 1, RULE_SYM, OP_INTERVAL, OP_NAT, 0},
   {"cong", 2, RULE_CONG, OP_INTERVAL, OP_NAT, 0},
   {"funExt", 1, RULE_FUNEXT, OP_INTERVAL, OP_NAT, 0},
+  {"transp", 3, RULE_TRANSP, OP_TRANSP, OP_NAT, 0},
   {"natAdd", 2, RULE_NAT2, OP_NAT_ADD, OP_NAT, 0},
   {"natSub", 2, RULE_NAT2, OP_NAT_SUB, OP_NAT, 0},
   {"natMul", 2, RULE_NAT2, OP_NAT_MUL, OP_NAT, 0},
@@ -991,6 +993,43 @@ static const Core *rule_funext(Call *k) {
   return core_app(c, core_bind(c, CORE_LAM, "g", NULL, core_bind(c, CORE_PLAM, path_binder(cod->name), NULL, core_bind(c, CORE_LAM, x, NULL, body))), h);
 }
 
+/* TRANSP_LINE: the line names its interval variable in the message. */
+static const Core *transp_line_fail(Checker *c, const char *name, const Value *face, const Core *line) {
+  const Value *v = at(c, line, val_ivar(c->m, c->level));
+  const char *f = show(c, face);
+  const char *zero = show(c, at(c, line, val_iend(c->m, 0)));
+  const char *bound;
+  if (!push_interval(c, path_binder(name)))
+    return NULL;
+  bound = show(c, v);
+  pop(c);
+  return nul(FAIL(c, "TRANSP_LINE", "the line of transp must be constant where %s holds, but it is %s at %s and %s at i0", f, bound, path_binder(name), zero));
+}
+
+/* transp (fun i => A) phi a, with phi : I and a : A[i0], of type A[i1]
+   (S2 R3 (a)). On each face of phi the line is constant: under the face
+   map of each conjunction, A at a fresh i is A at i0. */
+static const Core *rule_transp(Call *k) {
+  Checker *c = k->c;
+  uint64_t level = 0;
+  const Core *line = check_line(c, k->args[0], &level);
+  const Core *phi = line == NULL ? NULL : check(c, k->args[1], interval_type(c));
+  const Core *a = phi == NULL ? NULL : check(c, k->args[2], at(c, line, val_iend(c->m, 0)));
+  const Value *face = a == NULL ? NULL : face_norm(c->m, here(c, phi));
+  const Env *e = NULL;
+  uint32_t j;
+  if (face == NULL)
+    return NULL;
+  for (j = 0; j < face->conj_count; j++) {
+    if (!env_face(c->m, c->env, &face->conj[j], &e))
+      return NULL;
+    if (!conv_values(c->m, c->level + 1u, eval_core(c->m, env_push(c->m, e, val_ivar(c->m, c->level)), line), eval_core(c->m, env_push(c->m, e, val_iend(c->m, 0)), line)))
+      return transp_line_fail(c, k->args[0]->name, face, line);
+  }
+  k->type = at(c, line, val_iend(c->m, 1));
+  return op3(c, OP_TRANSP, 0, 3, core_bind(c, CORE_PLAM, path_binder(k->args[0]->name), NULL, line), phi, a);
+}
+
 static const Core *rule_nat2(Call *k) {
   Checker *c = k->c;
   const Core *x = check(c, k->args[0], nat_type(c));
@@ -1071,6 +1110,8 @@ static const Core *rule(Call *k) {
     return rule_cong(k);
   case RULE_FUNEXT:
     return rule_funext(k);
+  case RULE_TRANSP:
+    return rule_transp(k);
   case RULE_NAT2:
     return rule_nat2(k);
   case RULE_FLAG_IF:

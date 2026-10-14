@@ -22,7 +22,7 @@ static const char *const OP_NAMES[] = {
   [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
   [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
   [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?",
-  [OP_INTERVAL] = "I"
+  [OP_INTERVAL] = "I", [OP_TRANSP] = "transp"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -39,7 +39,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_PAYLOAD] = 1,
   [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
   [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
-  [OP_INTERVAL] = 0
+  [OP_INTERVAL] = 0, [OP_TRANSP] = 3
 };
 
 typedef enum {
@@ -95,6 +95,7 @@ static Value *new_value(Machine *m, ValKind kind) {
     return NULL;
   }
   v->kind = kind;
+  v->tag = CLOS_CORE;
   return v;
 }
 
@@ -280,6 +281,102 @@ static int ival_equal(const Value *a, const Value *b) {
   for (i = 0; i < a->conj_count; i++)
     if (conj_cmp(&a->conj[i], &b->conj[i]) != 0)
       return 0;
+  return 1;
+}
+
+int ival_is_end(const Value *v, int side) {
+  if (v == NULL || v->kind != VAL_IVAL)
+    return 0;
+  return side != 0 ? v->conj_count == 1 && v->conj[0].count == 0 : v->conj_count == 0;
+}
+
+/* A literal and its negation are adjacent in a sorted conjunction, and the
+   literal is the even one. */
+static int conj_empty_face(const IConj *c) {
+  uint32_t j;
+  for (j = 1; j < c->count; j++)
+    if ((c->lits[j - 1u] ^ 1u) == c->lits[j])
+      return 1;
+  return 0;
+}
+
+const Value *face_norm(Machine *m, const Value *phi) {
+  IConj *cs;
+  uint32_t i;
+  uint32_t k = 0;
+  if (phi == NULL)
+    return NULL;
+  cs = arena_alloc(m->arena, ((size_t)phi->conj_count + 1u) * sizeof *cs);
+  if (cs == NULL)
+    return oom(m);
+  for (i = 0; i < phi->conj_count; i++)
+    if (!conj_empty_face(&phi->conj[i]))
+      cs[k++] = phi->conj[i];
+  return ival_make(m, cs, k);
+}
+
+const Value *ival_face(Machine *m, const Value *r, uint32_t level, int side) {
+  /* The literal that the map makes true, and the one it makes false. */
+  uint32_t keep = level * 2u + (side != 0 ? 0u : 1u);
+  uint32_t kill = keep ^ 1u;
+  IConj *cs;
+  uint32_t *lits;
+  uint32_t i;
+  uint32_t j;
+  uint32_t n;
+  uint32_t k = 0;
+  int dead;
+  if (r == NULL)
+    return NULL;
+  cs = arena_alloc(m->arena, ((size_t)r->conj_count + 1u) * sizeof *cs);
+  if (cs == NULL)
+    return oom(m);
+  for (i = 0; i < r->conj_count; i++) {
+    lits = arena_alloc(m->arena, ((size_t)r->conj[i].count + 1u) * sizeof *lits);
+    if (lits == NULL)
+      return oom(m);
+    dead = 0;
+    n = 0;
+    for (j = 0; j < r->conj[i].count; j++) {
+      dead |= r->conj[i].lits[j] == kill;
+      lits[n] = r->conj[i].lits[j];
+      n += r->conj[i].lits[j] != keep && r->conj[i].lits[j] != kill;
+    }
+    cs[k].lits = lits;
+    cs[k].count = n;
+    k += !dead;
+  }
+  return ival_make(m, cs, k);
+}
+
+int env_face(Machine *m, const Env *env, const IConj *c, const Env **out) {
+  const Value **vals;
+  const Value *v;
+  const Env *e;
+  uint32_t n = 0;
+  uint32_t i;
+  uint32_t j;
+  for (e = env; e != NULL; e = e->next)
+    n++;
+  vals = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *vals);
+  if (vals == NULL) {
+    oom(m);
+    return 0;
+  }
+  for (e = env, i = 0; e != NULL; e = e->next, i++) {
+    v = e->value;
+    for (j = 0; j < c->count && v != NULL && v->kind == VAL_IVAL; j++)
+      v = ival_face(m, v, c->lits[j] >> 1u, (c->lits[j] & 1u) == 0u);
+    if (v == NULL)
+      return 0;
+    vals[i] = v;
+  }
+  *out = NULL;
+  for (i = n; i > 0; i--) {
+    *out = env_push(m, *out, vals[i - 1u]);
+    if (*out == NULL)
+      return 0;
+  }
   return 1;
 }
 
@@ -526,10 +623,14 @@ const Value *apply_value(Machine *m, const Value *fn, const Value *arg) {
   return internal(m, "an application of a value that is not a function");
 }
 
+static const Value *kan_apply(Machine *m, const Value *k, const Value *r);
+
 const Value *closure_apply(Machine *m, const Value *binder, const Value *arg) {
   const Env *env;
   if (binder == NULL || arg == NULL)
     return NULL;
+  if (binder->tag != CLOS_CORE)
+    return kan_apply(m, binder, arg);
   if (binder->body == NULL)
     return binder->arg;
   env = env_push(m, binder->env, arg);
@@ -550,9 +651,9 @@ const Value *path_apply(Machine *m, const Value *p, const Value *r, const Value 
   if (scrut_of(p) != SCRUT_NEUTRAL)
     return internal(m, "a path application of a value that is not a path");
   /* The end point rule: a neutral path at i0 or i1 is its end. */
-  if (r->conj_count == 0 && a != NULL)
+  if (ival_is_end(r, 0) && a != NULL)
     return a;
-  if (r->conj_count == 1 && r->conj[0].count == 0 && b != NULL)
+  if (ival_is_end(r, 1) && b != NULL)
     return b;
   ends = arena_alloc(m->arena, 2u * sizeof *ends);
   v = new_value(m, VAL_PAPP);
@@ -968,6 +1069,259 @@ static int arity_ok(const Machine *m, Op op, uint32_t inst, uint32_t n) {
   return n == varied_arity(m, op, inst);
 }
 
+/* The Kan operations (S2, R11 (a)). A line L is a path value in U, and
+   L(r) is L at the interval value r. A Kan rule gives a value at once; a
+   rule that needs a function of an interval value gives a closure tag. */
+
+#define KAN_FRESH_BASE 0x20000000u
+#define KAN_FRESH_MASK 0x0fffffffu
+
+static const Value *line_at(Machine *m, const Value *line, const Value *r) {
+  return path_apply(m, line, r, NULL, NULL);
+}
+
+/* L at a fresh interval variable, never at i0: a neutral line can be a
+   type former at i0. Eval has no level, so the Machine gives a level above
+   each context level. A Kan rule reads only the head kind. */
+static const Value *line_head(Machine *m, const Value *line) {
+  uint32_t level = KAN_FRESH_BASE + (m->fresh & KAN_FRESH_MASK);
+  m->fresh++;
+  return line_at(m, line, val_ivar(m, level));
+}
+
+/* T when it is a KIND value (the former of a line at each point), else an
+   internal error. */
+static const Value *line_former(Machine *m, const Value *t, ValKind kind) {
+  if (t == NULL || t->kind == kind)
+    return t;
+  return internal(m, "a line that changes its type former");
+}
+
+static const Value *kan_closure(Machine *m, ValKind kind, ClosTag tag, uint32_t field, uint32_t argc, const Value *x, const Value *y, const Value *z) {
+  const Value **args;
+  Value *v;
+  if (x == NULL || (argc > 1u && y == NULL) || (argc > 2u && z == NULL))
+    return NULL;
+  args = arena_alloc(m->arena, 3u * sizeof *args);
+  if (args == NULL)
+    return oom(m);
+  v = new_value(m, kind);
+  if (v == NULL)
+    return NULL;
+  args[0] = x;
+  args[1] = y;
+  args[2] = z;
+  v->name = kind == VAL_PLAM ? "i" : "x";
+  v->tag = tag;
+  v->field = field;
+  v->args = args;
+  v->argc = argc;
+  return v;
+}
+
+static const Value *transp(Machine *m, const Value *line, const Value *phi, const Value *base);
+
+static const Value *transp_stuck(Machine *m, const Value *line, const Value *phi, const Value *base) {
+  return make(m, VAL_STUCK, OP_TRANSP, 0, 3, line, phi, base);
+}
+
+static const Value *not_typed(Machine *m) {
+  return internal(m, "a transport of a value of the wrong type");
+}
+
+/* transp along the type argument FIELD of the data line L. */
+static const Value *transp_part(Machine *m, const Value *line, uint32_t field, const Value *phi, const Value *x) {
+  return transp(m, kan_closure(m, VAL_PLAM, CLOS_LINE_PART, field, 1, line, NULL, NULL), phi, x);
+}
+
+/* x'(r) = transp (fun j => A (r \/ ~j)) (phi \/ r) x: X in A(i1), moved
+   back to A(r). */
+static const Value *pi_back(Machine *m, const Value *line, const Value *phi, const Value *x, const Value *r) {
+  return transp(m, kan_closure(m, VAL_PLAM, CLOS_PI_DOM, 0, 2, line, r, NULL), ival_join(m, phi, r), x);
+}
+
+/* a'(r) = transp (fun j => A (r /\ j)) (phi \/ ~r) u: U in A(i0), moved
+   up to A(r). */
+static const Value *sigma_up(Machine *m, const Value *line, const Value *phi, const Value *u, const Value *r) {
+  return transp(m, kan_closure(m, VAL_PLAM, CLOS_SIGMA_DOM, 0, 2, line, r, NULL), ival_join(m, phi, ival_neg(m, r)), u);
+}
+
+static const Value *kan_apply(Machine *m, const Value *k, const Value *r) {
+  const Value *const *a = k->args;
+  const Value *t;
+  switch (k->tag) {
+  case CLOS_LINE_PART:
+    t = line_former(m, line_at(m, a[0], r), VAL_OP);
+    if (t != NULL && k->field >= t->argc)
+      return internal(m, "a line that changes its type former");
+    return t == NULL ? NULL : t->args[k->field];
+  case CLOS_PI_DOM:
+    t = line_former(m, line_at(m, a[0], ival_join(m, a[1], ival_neg(m, r))), VAL_PI);
+    return t == NULL ? NULL : t->dom;
+  case CLOS_SIGMA_DOM:
+    t = line_former(m, line_at(m, a[0], ival_meet(m, a[1], r)), VAL_SIGMA);
+    return t == NULL ? NULL : t->dom;
+  case CLOS_PI_COD:
+    return closure_apply(m, line_former(m, line_at(m, a[0], r), VAL_PI), pi_back(m, a[0], a[1], a[2], r));
+  case CLOS_SIGMA_COD:
+    return closure_apply(m, line_former(m, line_at(m, a[0], r), VAL_SIGMA), sigma_up(m, a[0], a[1], a[2], r));
+  case CLOS_TRANSP_PI:
+    return transp(m, kan_closure(m, VAL_PLAM, CLOS_PI_COD, 0, 3, a[0], a[1], r), a[1], apply_value(m, a[2], pi_back(m, a[0], a[1], r, val_iend(m, 0))));
+  case CLOS_CORE:
+    break;
+  }
+  return internal(m, "a closure with an unknown tag");
+}
+
+static const Value *transp_list(Machine *m, const Value *line, const Value *phi, const Value *base) {
+  Spine sp;
+  const Value **items;
+  const Value *tail;
+  uint32_t i;
+  if (!spine_of(m, base, &sp))
+    return NULL;
+  items = arena_alloc(m->arena, ((size_t)sp.count + 1u) * sizeof *items);
+  if (items == NULL)
+    return oom(m);
+  for (i = 0; i < sp.count; i++) {
+    items[i] = transp_part(m, line, 0, phi, sp.cells[i]->args[0]);
+    if (items[i] == NULL)
+      return NULL;
+  }
+  tail = scrut_of(sp.tail) == SCRUT_NEUTRAL ? transp_stuck(m, line, phi, sp.tail) : sp.tail;
+  return build_list(m, items, sp.count, tail);
+}
+
+/* Rules 3, 4 and 8 (R4 (a)): L(i) is the data type FORMER at a fresh i. A
+   closed type gives the base; a constructor base goes into its arguments;
+   a neutral base and a domain family are stuck. */
+static const Value *transp_data(Machine *m, Op former, const Value *line, const Value *phi, const Value *base) {
+  int neutral = scrut_of(base) == SCRUT_NEUTRAL;
+  switch (former) {
+  case OP_NAT:
+  case OP_FLAG:
+  case OP_UNIT:
+    return base;
+  case OP_PROD:
+    if (neutral)
+      break;
+    if (!val_is(base, OP_PAIR))
+      return not_typed(m);
+    return make(m, VAL_OP, OP_PAIR, 0, 2, transp_part(m, line, 0, phi, base->args[0]), transp_part(m, line, 1, phi, base->args[1]), NULL);
+  case OP_SUM:
+    if (neutral)
+      break;
+    if (!val_is(base, OP_INL) && !val_is(base, OP_INR))
+      return not_typed(m);
+    return make(m, VAL_OP, base->op, 0, 1, transp_part(m, line, val_is(base, OP_INL) ? 0u : 1u, phi, base->args[0]), NULL, NULL);
+  case OP_OPTION:
+    if (neutral)
+      break;
+    if (val_is(base, OP_NONE))
+      return base;
+    if (!val_is(base, OP_SOME))
+      return not_typed(m);
+    return make(m, VAL_OP, OP_SOME, 0, 1, transp_part(m, line, 0, phi, base->args[0]), NULL, NULL);
+  case OP_LIST:
+    if (neutral)
+      break;
+    return transp_list(m, line, phi, base);
+  case OP_FAMILY:
+    break;
+  case OP_INTERVAL:
+  case OP_UNIT_VAL:
+  case OP_FLAG_YES:
+  case OP_FLAG_NO:
+  case OP_PAIR:
+  case OP_INL:
+  case OP_INR:
+  case OP_NONE:
+  case OP_SOME:
+  case OP_NIL:
+  case OP_CONS:
+  case OP_PACK:
+  case OP_CTOR:
+  case OP_FIRST:
+  case OP_SECOND:
+  case OP_EITHER:
+  case OP_OPTION_ELIM:
+  case OP_PURE:
+  case OP_MAP:
+  case OP_BIND:
+  case OP_FOLD_NAT:
+  case OP_FOLD_LIST:
+  case OP_FOLD_FAMILY:
+  case OP_UNFOLD:
+  case OP_FILTER:
+  case OP_WITNESS:
+  case OP_PAYLOAD:
+  case OP_NAT_ADD:
+  case OP_NAT_SUB:
+  case OP_NAT_MUL:
+  case OP_NAT_EQ:
+  case OP_NAT_LE:
+  case OP_FLAG_IF:
+  case OP_PROJ:
+  case OP_TRANSP:
+    return internal(m, "a transport along a line that is not a type");
+  }
+  return transp_stuck(m, line, phi, base);
+}
+
+/* Rule 6: L(i) = Sigma (x : A i) (B i x). The base goes through its
+   projections, so a neutral base moves too. */
+static const Value *transp_sigma(Machine *m, const Value *line, const Value *phi, const Value *base) {
+  const Value *one[1];
+  const Value *u;
+  const Value *v;
+  one[0] = base;
+  u = reduce_part(m, OP_WITNESS, one, 1, OP_PACK, 0);
+  v = reduce_part(m, OP_PAYLOAD, one, 1, OP_PACK, 1);
+  return make(m, VAL_OP, OP_PACK, 0, 2, sigma_up(m, line, phi, u, val_iend(m, 1)), transp(m, kan_closure(m, VAL_PLAM, CLOS_SIGMA_COD, 0, 3, line, phi, u), phi, v), NULL);
+}
+
+/* transp L phi a, the rules of the S2 kickoff section 1.2 in order. */
+static const Value *transp(Machine *m, const Value *line, const Value *phi, const Value *base) {
+  const Value *face;
+  const Value *head;
+  if (line == NULL || phi == NULL || base == NULL || !spend(m, 1))
+    return NULL;
+  face = face_norm(m, phi);
+  if (face == NULL)
+    return NULL;
+  /* Rule 1: phi is true. */
+  if (ival_is_end(face, 1) || base->kind == VAL_TRAP)
+    return base;
+  head = line_head(m, line);
+  if (head == NULL)
+    return NULL;
+  switch (head->kind) {
+  case VAL_UNIV: /* rule 2 */
+    return base;
+  case VAL_OP: /* rules 3, 4, 8 */
+    return transp_data(m, head->op, line, face, base);
+  case VAL_PI: /* rule 5 */
+    return kan_closure(m, VAL_LAM, CLOS_TRANSP_PI, 0, 3, line, face, base);
+  case VAL_SIGMA: /* rule 6 */
+    return transp_sigma(m, line, face, base);
+  case VAL_TRAP:
+    return head;
+  case VAL_NAT:
+  case VAL_LAM:
+  case VAL_PLAM:
+  case VAL_IVAL:
+    return internal(m, "a transport along a line that is not a type");
+  case VAL_PATHP: /* rule 7 is S2b */
+  case VAL_VAR:
+  case VAL_APP:
+  case VAL_STUCK:
+  case VAL_PAPP:
+    break;
+  }
+  /* Rule 9: a neutral line. */
+  return transp_stuck(m, line, face, base);
+}
+
 static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
   if (!arity_ok(m, op, inst, n))
     return internal(m, "an operation with the wrong number of arguments");
@@ -1035,6 +1389,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return reduce_flag_if(m, a, n);
   case OP_PROJ:
     return reduce_proj(m, inst, field, a, n);
+  case OP_TRANSP:
+    return transp(m, a[0], a[1], a[2]);
   }
   return internal(m, "an unknown operation");
 }

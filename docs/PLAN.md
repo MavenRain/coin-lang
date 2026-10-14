@@ -83,7 +83,10 @@ S1 closed both:
 - The kit `Eq` was the book identity type with `refl`, `symm`, `trans`,
   `cong` and `transport`. Closed in S1: `PathP` replaces it (O8). `refl`,
   `sym`, `cong` and `funExt` are builtins. `trans` and `transport` come
-  back in S2, with `hcomp` and `transp`.
+  back in S2, with `hcomp` and `transp`. S2a: `transp` is a builtin with
+  rules for the universe, the data formers, Pi and Sigma. `transport`, `subst`, `J` and `JRefl`
+  are library defs in `domain/domain.lang`. `hcomp`, `trans` and the
+  PathP rule of `transp` come in S2b.
 
 ## 4. The cubical kernel
 
@@ -231,4 +234,7 @@ are new or change:
 - O10: `match` needs decidable equality on `T`. S6 proves it for `T` made
   from `Fin`, products and Sigma over `Fin`.
 - O11: the `J` rule on `refl` is a path (CCHM). It is not a conversion.
+  Closed in S2a: `JRefl` in `domain/domain.lang` is a path by `transp`
+  on a constant line. The check refusal `j-refl-conv` shows that `refl`
+  does not prove it at a neutral motive.
 - O12: fill `probe/CAPABILITY.md` (S8).
