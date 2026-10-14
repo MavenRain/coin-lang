@@ -63,19 +63,27 @@ These are permitted, because they do not identify proofs by their type:
   constructors: they add paths and they identify no terms by conversion.
   The design asks for the set truncation of the groupoid of coin spaces, so
   `Trunc0` is in the language (O7);
-- `isProp A` and `isSet A` as ordinary types (Pi types of paths).
+- `isProp A` and `isSet A` as ordinary types (Pi types of paths);
+- the conversions of ruling R11: path eta, and the normal form of the
+  interval (`~~r = r` and the De Morgan laws). Path eta compares two paths
+  at a fresh interval variable, not by their type or their end points.
 
 The reason in the design: the loops of `FinSet` at `Fin n` are the n!
 permutations of `Fin n`. With proof irrelevance each loop is `refl`, and
 the permutation coins of graph isomorphism become one coin.
 
-Gaps in the kit at the start (the same as the strategy-lang S0 survey):
+Gaps in the kit at the start (the same as the strategy-lang S0 survey).
+S1 closed both:
 
-- `src/json.c` writes each `Eq` value as `null`. A def whose type is an
-  `Eq` type is not an instance. strategy-lang b40e45d fixed this for the
-  book `Eq`; S1 here replaces `Eq` and uses that fix as a reference.
-- The kit `Eq` is the book identity type with `refl`, `symm`, `trans`,
-  `cong` and `transport`. CTT replaces it with `PathP` (O8).
+- `src/json.c` wrote each `Eq` value as `null`, and a def of an `Eq` type
+  was not an instance. Closed in S1: `Eq` is gone, a def of a `PathP` type
+  is an instance, and its value is `{"refl": a}` or `{"from": a, "to": b,
+  "term": t}` (`docs/host/README.md`). strategy-lang b40e45d was the
+  reference.
+- The kit `Eq` was the book identity type with `refl`, `symm`, `trans`,
+  `cong` and `transport`. Closed in S1: `PathP` replaces it (O8). `refl`,
+  `sym`, `cong` and `funExt` are builtins. `trans` and `transport` come
+  back in S2, with `hcomp` and `transp`.
 
 ## 4. The cubical kernel
 
@@ -200,7 +208,8 @@ are new or change:
   repository. The agda/cubical library (`ua`, `uaArrow`, `isoToEquiv`,
   `FinSet`, the set truncation) is the reference for the guest prelude.
   Other routes: cartesian CTT with V types (redtt, cooltt); or a new
-  lang-template kit (for example `hosts/tcc-json-cubical`).
+  lang-template kit (for example `hosts/tcc-json-cubical`). Closed in S1
+  (USER ruling 2026-10-14): the default, CCHM, local to this repository.
 - O3: `FinSet` as a library Sigma over `U` (default) or as a primitive
   universe of codes. A primitive universe still needs Glue for its Kan
   operations, so it saves no kernel work.
@@ -213,7 +222,9 @@ are new or change:
 - O6: "JSON deserialization" read as the kit JSON document.
 - O7: `Trunc0` is in the language, because the design names it.
   strategy-lang O3 forbade truncation; this design asks for it.
-- O8: the kit `Eq` goes in S1, or stays as a name for `Path`.
+- O8: the kit `Eq` goes in S1, or stays as a name for `Path`. Closed in
+  S1 (ruling R3 (a)): `Eq` is gone. `Path A a b` is `PathP (fun _ => A) a
+  b`.
 - O9: graph isomorphism coins as `Fin 2 * Fin 24` with a permutation table
   (default), or as the loop type of `FinSet` at `Fin 4`. The second needs a
   `FinSet` proof for `Equiv (Fin 4) (Fin 4)` (a Lehmer code).

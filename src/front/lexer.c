@@ -40,6 +40,10 @@ const char *tok_kind_name(TokKind kind) {
     case TOK_FATARROW: return "'=>'";
     case TOK_STAR: return "'*'";
     case TOK_BAR: return "'|'";
+    case TOK_AT: return "'@'";
+    case TOK_TILDE: return "'~'";
+    case TOK_MEET: return "'/\\'";
+    case TOK_JOIN: return "'\\/'";
     case TOK_KW_DEF: return "'def'";
     case TOK_KW_REC: return "'rec'";
     case TOK_KW_FUN: return "'fun'";
@@ -154,6 +158,16 @@ static int lex_symbol(Lexer *lx) {
     case ')': kind = TOK_RPAREN; break;
     case '*': kind = TOK_STAR; break;
     case '|': kind = TOK_BAR; break;
+    case '@': kind = TOK_AT; break;
+    case '~': kind = TOK_TILDE; break;
+    case '/':
+      kind = next == '\\' ? TOK_MEET : TOK_EOF;
+      width = 2;
+      break;
+    case '\\':
+      kind = next == '/' ? TOK_JOIN : TOK_EOF;
+      width = 2;
+      break;
     case ':':
       kind = next == '=' ? TOK_DEFINE : TOK_COLON;
       width = next == '=' ? 2 : 1;

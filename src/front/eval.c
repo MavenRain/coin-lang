@@ -10,35 +10,36 @@
 
 static const char *const OP_NAMES[] = {
   [OP_NAT] = "Nat", [OP_FLAG] = "Flag", [OP_UNIT] = "Unit", [OP_PROD] = "Prod",
-  [OP_SUM] = "Sum", [OP_OPTION] = "Option", [OP_LIST] = "List", [OP_EQ] = "Eq",
+  [OP_SUM] = "Sum", [OP_OPTION] = "Option", [OP_LIST] = "List",
   [OP_FAMILY] = "?", [OP_UNIT_VAL] = "unit", [OP_FLAG_YES] = "flagYes",
   [OP_FLAG_NO] = "flagNo", [OP_PAIR] = "pair", [OP_INL] = "inl", [OP_INR] = "inr",
   [OP_NONE] = "none", [OP_SOME] = "some", [OP_NIL] = "nil", [OP_CONS] = "cons",
-  [OP_PACK] = "pack", [OP_REFL] = "refl", [OP_CTOR] = "?", [OP_FIRST] = "first",
+  [OP_PACK] = "pack", [OP_CTOR] = "?", [OP_FIRST] = "first",
   [OP_SECOND] = "second", [OP_EITHER] = "either", [OP_OPTION_ELIM] = "option",
   [OP_PURE] = "pure", [OP_MAP] = "map", [OP_BIND] = "bind", [OP_FOLD_NAT] = "fold",
   [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_UNFOLD] = "unfold",
   [OP_FILTER] = "filter", [OP_WITNESS] = "witness", [OP_PAYLOAD] = "payload",
-  [OP_SYMM] = "symm", [OP_TRANS] = "trans", [OP_TRANSPORT] = "transport",
-  [OP_CONG] = "cong", [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
+  [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
   [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
-  [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?"
+  [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?",
+  [OP_INTERVAL] = "I"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
    family tables. */
 static const unsigned char OP_ARITY[] = {
   [OP_NAT] = 0, [OP_FLAG] = 0, [OP_UNIT] = 0, [OP_PROD] = 2, [OP_SUM] = 2,
-  [OP_OPTION] = 1, [OP_LIST] = 1, [OP_EQ] = 3, [OP_FAMILY] = VARIES,
+  [OP_OPTION] = 1, [OP_LIST] = 1, [OP_FAMILY] = VARIES,
   [OP_UNIT_VAL] = 0, [OP_FLAG_YES] = 0, [OP_FLAG_NO] = 0, [OP_PAIR] = 2,
   [OP_INL] = 1, [OP_INR] = 1, [OP_NONE] = 0, [OP_SOME] = 1, [OP_NIL] = 0,
-  [OP_CONS] = 2, [OP_PACK] = 2, [OP_REFL] = 0, [OP_CTOR] = VARIES, [OP_FIRST] = 1,
+  [OP_CONS] = 2, [OP_PACK] = 2, [OP_CTOR] = VARIES, [OP_FIRST] = 1,
   [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_PURE] = 1,
   [OP_MAP] = 2, [OP_BIND] = 2, [OP_FOLD_NAT] = 3, [OP_FOLD_LIST] = 3,
   [OP_FOLD_FAMILY] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
-  [OP_PAYLOAD] = 1, [OP_SYMM] = 1, [OP_TRANS] = 2, [OP_TRANSPORT] = 3,
-  [OP_CONG] = 2, [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
-  [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1
+  [OP_PAYLOAD] = 1,
+  [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
+  [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
+  [OP_INTERVAL] = 0
 };
 
 typedef enum {
@@ -127,6 +128,161 @@ const Value *val_univ(Machine *m, uint64_t level) {
   return v;
 }
 
+/* The interval is the free De Morgan algebra (R4 (a)). A value is a join
+   of conjunctions of literals, in a canonical order (length, then the
+   literals), with absorption. ~~i = i, and ~ swaps meet and join. There is
+   no rule i /\ ~i = i0: the interval is not Boolean. */
+
+/* 1 when each literal of A is in B. */
+static int conj_subset(const IConj *a, const IConj *b) {
+  uint32_t i = 0;
+  uint32_t j = 0;
+  while (i < a->count && j < b->count && a->lits[i] >= b->lits[j]) {
+    i += a->lits[i] == b->lits[j];
+    j++;
+  }
+  return i == a->count;
+}
+
+static int conj_cmp(const IConj *a, const IConj *b) {
+  uint32_t i;
+  if (a->count != b->count)
+    return a->count < b->count ? -1 : 1;
+  for (i = 0; i < a->count; i++)
+    if (a->lits[i] != b->lits[i])
+      return a->lits[i] < b->lits[i] ? -1 : 1;
+  return 0;
+}
+
+static int conj_union(Machine *m, const IConj *a, const IConj *b, IConj *out) {
+  uint32_t *lits = arena_alloc(m->arena, ((size_t)a->count + b->count + 1u) * sizeof *lits);
+  uint32_t i = 0;
+  uint32_t j = 0;
+  uint32_t k = 0;
+  if (lits == NULL) {
+    oom(m);
+    return 0;
+  }
+  while (i < a->count || j < b->count) {
+    int take_a = j == b->count || (i < a->count && a->lits[i] <= b->lits[j]);
+    int take_b = i == a->count || (j < b->count && b->lits[j] <= a->lits[i]);
+    lits[k++] = take_a ? a->lits[i] : b->lits[j];
+    i += take_a;
+    j += take_b;
+  }
+  out->lits = lits;
+  out->count = k;
+  return 1;
+}
+
+/* The normal form of the join of the N conjunctions CS: absorption, then
+   the canonical order. */
+static const Value *ival_make(Machine *m, const IConj *cs, uint32_t n) {
+  IConj *out = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *out);
+  Value *v;
+  uint32_t i;
+  uint32_t j;
+  uint32_t k = 0;
+  int drop;
+  if (out == NULL)
+    return oom(m);
+  for (i = 0; i < n; i++) {
+    drop = 0;
+    for (j = 0; j < n && !drop; j++)
+      drop = j != i && conj_subset(&cs[j], &cs[i]) && (cs[j].count < cs[i].count || j < i);
+    for (j = k; j > 0 && !drop && conj_cmp(&out[j - 1u], &cs[i]) > 0; j--)
+      out[j] = out[j - 1u];
+    out[j] = drop ? out[j] : cs[i];
+    k += !drop;
+  }
+  v = new_value(m, VAL_IVAL);
+  if (v == NULL)
+    return NULL;
+  v->conj = out;
+  v->conj_count = k;
+  return v;
+}
+
+static const Value *ival_lit(Machine *m, uint32_t lit) {
+  uint32_t *lits = arena_alloc(m->arena, sizeof *lits);
+  IConj c;
+  if (lits == NULL)
+    return oom(m);
+  lits[0] = lit;
+  c.lits = lits;
+  c.count = 1;
+  return ival_make(m, &c, 1);
+}
+
+const Value *val_ivar(Machine *m, uint32_t level) {
+  return ival_lit(m, level * 2u);
+}
+
+const Value *val_iend(Machine *m, int side) {
+  IConj c;
+  c.lits = NULL;
+  c.count = 0;
+  return ival_make(m, &c, side != 0 ? 1u : 0u);
+}
+
+static const Value *ival_join(Machine *m, const Value *a, const Value *b) {
+  IConj *cs;
+  uint32_t i;
+  if (a == NULL || b == NULL)
+    return NULL;
+  cs = arena_alloc(m->arena, ((size_t)a->conj_count + b->conj_count + 1u) * sizeof *cs);
+  if (cs == NULL)
+    return oom(m);
+  for (i = 0; i < a->conj_count; i++)
+    cs[i] = a->conj[i];
+  for (i = 0; i < b->conj_count; i++)
+    cs[a->conj_count + i] = b->conj[i];
+  return ival_make(m, cs, a->conj_count + b->conj_count);
+}
+
+static const Value *ival_meet(Machine *m, const Value *a, const Value *b) {
+  IConj *cs;
+  uint32_t i;
+  uint32_t j;
+  if (a == NULL || b == NULL)
+    return NULL;
+  cs = arena_alloc(m->arena, ((size_t)a->conj_count * b->conj_count + 1u) * sizeof *cs);
+  if (cs == NULL)
+    return oom(m);
+  for (i = 0; i < a->conj_count; i++)
+    for (j = 0; j < b->conj_count; j++)
+      if (!conj_union(m, &a->conj[i], &b->conj[j], &cs[i * b->conj_count + j]))
+        return NULL;
+  return ival_make(m, cs, a->conj_count * b->conj_count);
+}
+
+/* De Morgan: ~(c1 \/ c2) = ~c1 /\ ~c2 and ~(l1 /\ l2) = ~l1 \/ ~l2. */
+static const Value *ival_neg(Machine *m, const Value *a) {
+  const Value *out = val_iend(m, 1);
+  const Value *flipped;
+  uint32_t i;
+  uint32_t j;
+  if (a == NULL)
+    return NULL;
+  for (i = 0; i < a->conj_count && out != NULL; i++) {
+    flipped = val_iend(m, 0);
+    for (j = 0; j < a->conj[i].count; j++)
+      flipped = ival_join(m, flipped, ival_lit(m, a->conj[i].lits[j] ^ 1u));
+    out = ival_meet(m, out, flipped);
+  }
+  return out;
+}
+
+static int ival_equal(const Value *a, const Value *b) {
+  uint32_t i;
+  if (a->conj_count != b->conj_count)
+    return 0;
+  for (i = 0; i < a->conj_count; i++)
+    if (conj_cmp(&a->conj[i], &b->conj[i]) != 0)
+      return 0;
+  return 1;
+}
+
 const Value *val_op(Machine *m, ValKind kind, Op op, uint32_t inst, uint32_t field, const Value *const *args, uint32_t argc) {
   const Value **copy;
   Value *v;
@@ -184,7 +340,7 @@ const Value *val_arrow(Machine *m, const Value *dom, const Value *cod) {
 
 const Value *val_closure(Machine *m, ValKind kind, const char *name, const Value *dom, const Env *env, const Core *body) {
   Value *v;
-  if (body == NULL || (dom == NULL && kind != VAL_LAM))
+  if (body == NULL || (dom == NULL && kind != VAL_LAM && kind != VAL_PLAM))
     return NULL;
   v = new_value(m, kind);
   if (v == NULL)
@@ -240,6 +396,7 @@ static Scrut scrut_of(const Value *v) {
   case VAL_VAR:
   case VAL_APP:
   case VAL_STUCK:
+  case VAL_PAPP:
     return SCRUT_NEUTRAL;
   case VAL_NAT:
   case VAL_UNIV:
@@ -247,6 +404,9 @@ static Scrut scrut_of(const Value *v) {
   case VAL_PI:
   case VAL_SIGMA:
   case VAL_OP:
+  case VAL_PLAM:
+  case VAL_PATHP:
+  case VAL_IVAL:
     return SCRUT_VALUE;
   }
   return SCRUT_VALUE;
@@ -346,6 +506,7 @@ const Value *apply_value(Machine *m, const Value *fn, const Value *arg) {
   case VAL_VAR:
   case VAL_APP:
   case VAL_STUCK:
+  case VAL_PAPP:
     v = new_value(m, VAL_APP);
     if (v == NULL)
       return NULL;
@@ -357,6 +518,9 @@ const Value *apply_value(Machine *m, const Value *fn, const Value *arg) {
   case VAL_PI:
   case VAL_SIGMA:
   case VAL_OP:
+  case VAL_PLAM:
+  case VAL_PATHP:
+  case VAL_IVAL:
     break;
   }
   return internal(m, "an application of a value that is not a function");
@@ -372,6 +536,35 @@ const Value *closure_apply(Machine *m, const Value *binder, const Value *arg) {
   if (env == NULL)
     return NULL;
   return eval_core(m, env, binder->body);
+}
+
+const Value *path_apply(Machine *m, const Value *p, const Value *r, const Value *a, const Value *b) {
+  Value *v;
+  const Value **ends;
+  if (p == NULL || r == NULL)
+    return NULL;
+  if (p->kind == VAL_PLAM)
+    return closure_apply(m, p, r);
+  if (p->kind == VAL_TRAP)
+    return p;
+  if (scrut_of(p) != SCRUT_NEUTRAL)
+    return internal(m, "a path application of a value that is not a path");
+  /* The end point rule: a neutral path at i0 or i1 is its end. */
+  if (r->conj_count == 0 && a != NULL)
+    return a;
+  if (r->conj_count == 1 && r->conj[0].count == 0 && b != NULL)
+    return b;
+  ends = arena_alloc(m->arena, 2u * sizeof *ends);
+  v = new_value(m, VAL_PAPP);
+  if (ends == NULL || v == NULL)
+    return oom(m);
+  ends[0] = a;
+  ends[1] = b;
+  v->dom = p;
+  v->arg = r;
+  v->args = ends;
+  v->argc = 2;
+  return v;
 }
 
 static const Value *reduce_part(Machine *m, Op op, const Value *const *a, uint32_t n, Op ctor, uint32_t index) {
@@ -679,16 +872,6 @@ static const Value *reduce_filter(Machine *m, uint32_t inst, const Value *const 
   return internal(m, "a filter with no instance");
 }
 
-/* symm, trans, cong and transport compute when each proof argument is refl. */
-static const Value *reduce_proof(Machine *m, Op op, const Value *const *a, uint32_t n, uint32_t first, uint32_t count, const Value *result) {
-  const Value *out;
-  uint32_t i;
-  for (i = first; i < first + count; i++)
-    if (blocked(m, a[i], op, 0, 0, a, n, &out))
-      return out;
-  return result;
-}
-
 /* 1 when both arguments are numbers. Else *OUT is the trap or the stuck
    operation. */
 static int nat_args(Machine *m, Op op, const Value *const *a, uint32_t n, uint64_t *x, uint64_t *y, const Value **out) {
@@ -796,7 +979,7 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_SUM:
   case OP_OPTION:
   case OP_LIST:
-  case OP_EQ:
+  case OP_INTERVAL:
   case OP_FAMILY:
   case OP_UNIT_VAL:
   case OP_FLAG_YES:
@@ -809,7 +992,6 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_NIL:
   case OP_CONS:
   case OP_PACK:
-  case OP_REFL:
   case OP_CTOR:
     return val_op(m, VAL_OP, op, inst, field, a, n);
   case OP_FIRST:
@@ -840,14 +1022,6 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return reduce_unfold(m, a, n);
   case OP_FILTER:
     return reduce_filter(m, inst, a, n);
-  case OP_SYMM:
-    return reduce_proof(m, op, a, n, 0, 1, constant(m, OP_REFL));
-  case OP_TRANS:
-    return reduce_proof(m, op, a, n, 0, 2, constant(m, OP_REFL));
-  case OP_CONG:
-    return reduce_proof(m, op, a, n, 1, 1, constant(m, OP_REFL));
-  case OP_TRANSPORT:
-    return reduce_proof(m, op, a, n, 1, 1, a[2]);
   case OP_NAT_ADD:
     return nat_add(m, a, n);
   case OP_NAT_SUB:
@@ -878,6 +1052,22 @@ static const Value *eval_op(Machine *m, const Env *env, const Core *c) {
   return reduce_op(m, c->op, c->inst, c->field, args, c->argc);
 }
 
+static const Value *eval_pathp(Machine *m, const Env *env, const Core *c) {
+  const Value **ends = arena_alloc(m->arena, 2u * sizeof *ends);
+  Value *v;
+  if (ends == NULL)
+    return oom(m);
+  ends[0] = eval_core(m, env, c->args[0]);
+  ends[1] = eval_core(m, env, c->args[1]);
+  v = (Value *)val_closure(m, VAL_PLAM, c->name, NULL, env, c->b);
+  if (ends[0] == NULL || ends[1] == NULL || v == NULL)
+    return NULL;
+  v->kind = VAL_PATHP;
+  v->args = ends;
+  v->argc = 2;
+  return v;
+}
+
 static const Value *eval_inner(Machine *m, const Env *env, const Core *c) {
   switch (c->kind) {
   case CORE_VAR:
@@ -900,6 +1090,22 @@ static const Value *eval_inner(Machine *m, const Env *env, const Core *c) {
     return apply_value(m, eval_core(m, env, c->a), eval_core(m, env, c->b));
   case CORE_OP:
     return eval_op(m, env, c);
+  case CORE_PLAM:
+    return val_closure(m, VAL_PLAM, c->name, NULL, env, c->b);
+  case CORE_PATHP:
+    return eval_pathp(m, env, c);
+  case CORE_PAPP:
+    return path_apply(m, eval_core(m, env, c->a), eval_core(m, env, c->b), eval_core(m, env, c->args[0]), eval_core(m, env, c->args[1]));
+  case CORE_IZERO:
+    return val_iend(m, 0);
+  case CORE_IONE:
+    return val_iend(m, 1);
+  case CORE_INEG:
+    return ival_neg(m, eval_core(m, env, c->a));
+  case CORE_IMEET:
+    return ival_meet(m, eval_core(m, env, c->a), eval_core(m, env, c->b));
+  case CORE_IJOIN:
+    return ival_join(m, eval_core(m, env, c->a), eval_core(m, env, c->b));
   }
   return internal(m, "an unknown core term");
 }
@@ -924,6 +1130,22 @@ static int conv_binder(Machine *m, uint32_t level, const Value *a, const Value *
   return conv_values(m, level, a->dom, b->dom) && conv_values(m, level + 1u, closure_apply(m, a, x), closure_apply(m, b, x));
 }
 
+/* Path eta (R11): a path is equal to Q when the two agree at a fresh
+   interval variable. A neutral Q there is a VAL_PAPP with no ends. */
+static int conv_path(Machine *m, uint32_t level, const Value *a, const Value *b) {
+  const Value *i = val_ivar(m, level);
+  const Value *at_a = a->kind == VAL_PLAM ? closure_apply(m, a, i) : path_apply(m, a, i, NULL, NULL);
+  const Value *at_b = b->kind == VAL_PLAM ? closure_apply(m, b, i) : path_apply(m, b, i, NULL, NULL);
+  return conv_values(m, level + 1u, at_a, at_b);
+}
+
+/* Two path types: the lines at a fresh interval variable and both ends. */
+static int conv_pathp(Machine *m, uint32_t level, const Value *a, const Value *b) {
+  const Value *i = val_ivar(m, level);
+  return conv_values(m, level, a->args[0], b->args[0]) && conv_values(m, level, a->args[1], b->args[1])
+      && conv_values(m, level + 1u, closure_apply(m, a, i), closure_apply(m, b, i));
+}
+
 static int same_head(const Value *a, const Value *b) {
   return a->op == b->op && a->inst == b->inst && a->field == b->field && a->argc == b->argc;
 }
@@ -943,6 +1165,8 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
   while (a != NULL && b != NULL && spend(m, 1)) {
     if (a->kind == VAL_LAM || b->kind == VAL_LAM)
       return conv_fun(m, level, a, b);
+    if (a->kind == VAL_PLAM || b->kind == VAL_PLAM)
+      return conv_path(m, level, a, b);
     if ((val_is(a, OP_PAIR) || val_is(a, OP_PACK)) && scrut_of(b) == SCRUT_NEUTRAL)
       return conv_pair(m, level, a, b);
     if ((val_is(b, OP_PAIR) || val_is(b, OP_PACK)) && scrut_of(a) == SCRUT_NEUTRAL)
@@ -957,10 +1181,16 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
     case VAL_TRAP:
       return 1;
     case VAL_LAM:
+    case VAL_PLAM:
       return 0;
     case VAL_PI:
     case VAL_SIGMA:
       return conv_binder(m, level, a, b);
+    case VAL_PATHP:
+      return conv_pathp(m, level, a, b);
+    case VAL_IVAL:
+      return ival_equal(a, b);
+    case VAL_PAPP:
     case VAL_APP:
       if (!conv_values(m, level, a->dom, b->dom))
         return 0;
@@ -1036,11 +1266,42 @@ static const Core *quote_app(Machine *m, uint32_t level, const Value *v) {
   return c;
 }
 
-static const Core *quote_binder(Machine *m, uint32_t level, const Value *v, CoreKind kind) {
-  const Core *dom = kind == CORE_LAM ? NULL : quote_value(m, level, v->dom);
-  const Core *body = quote_value(m, level + 1u, closure_apply(m, v, val_var(m, level)));
+static const Core *core_pair(Machine *m, CoreKind kind, const Core *a, const Core *b) {
   Core *c;
-  if (body == NULL || (dom == NULL && kind != CORE_LAM))
+  if (a == NULL || (b == NULL && kind != CORE_INEG))
+    return NULL;
+  c = new_core(m, kind);
+  if (c == NULL)
+    return NULL;
+  c->a = a;
+  c->b = b;
+  return c;
+}
+
+/* The two ends of a PATHP or a PAPP value. */
+static const Core *const *quote_ends(Machine *m, uint32_t level, const Value *v) {
+  const Core **ends = arena_alloc(m->arena, 2u * sizeof *ends);
+  if (ends == NULL) {
+    oom(m);
+    return NULL;
+  }
+  if (v->argc != 2 || v->args[0] == NULL || v->args[1] == NULL) {
+    internal(m, "a path with no ends");
+    return NULL;
+  }
+  ends[0] = quote_value(m, level, v->args[0]);
+  ends[1] = quote_value(m, level, v->args[1]);
+  return ends[0] != NULL && ends[1] != NULL ? ends : NULL;
+}
+
+static const Core *quote_binder(Machine *m, uint32_t level, const Value *v, CoreKind kind) {
+  int has_dom = kind == CORE_PI || kind == CORE_SIGMA;
+  int interval = kind == CORE_PLAM || kind == CORE_PATHP;
+  const Core *dom = has_dom ? quote_value(m, level, v->dom) : NULL;
+  const Core *body = quote_value(m, level + 1u, closure_apply(m, v, interval ? val_ivar(m, level) : val_var(m, level)));
+  const Core *const *ends = kind == CORE_PATHP ? quote_ends(m, level, v) : NULL;
+  Core *c;
+  if (body == NULL || (dom == NULL && has_dom) || (ends == NULL && kind == CORE_PATHP))
     return NULL;
   c = new_core(m, kind);
   if (c == NULL)
@@ -1048,6 +1309,54 @@ static const Core *quote_binder(Machine *m, uint32_t level, const Value *v, Core
   c->name = v->name;
   c->a = dom;
   c->b = body;
+  c->args = ends;
+  c->argc = ends != NULL ? 2u : 0u;
+  return c;
+}
+
+static const Core *quote_lit(Machine *m, uint32_t level, uint32_t lit) {
+  Core *c;
+  if ((lit >> 1u) >= level) {
+    internal(m, "an interval variable above its level");
+    return NULL;
+  }
+  c = new_core(m, CORE_VAR);
+  if (c == NULL)
+    return NULL;
+  c->index = level - 1u - (lit >> 1u);
+  return (lit & 1u) != 0u ? core_pair(m, CORE_INEG, c, NULL) : c;
+}
+
+static const Core *quote_ival(Machine *m, uint32_t level, const Value *v) {
+  const Core *out = core_leaf(m, CORE_IZERO, 0);
+  const Core *t;
+  const IConj *k;
+  uint32_t i;
+  uint32_t j;
+  for (i = 0; i < v->conj_count; i++) {
+    k = &v->conj[i];
+    t = k->count == 0 ? core_leaf(m, CORE_IONE, 0) : quote_lit(m, level, k->lits[0]);
+    for (j = 1; j < k->count; j++)
+      t = core_pair(m, CORE_IMEET, t, quote_lit(m, level, k->lits[j]));
+    out = i == 0 ? t : core_pair(m, CORE_IJOIN, out, t);
+  }
+  return out;
+}
+
+static const Core *quote_papp(Machine *m, uint32_t level, const Value *v) {
+  const Core *path = quote_value(m, level, v->dom);
+  const Core *r = quote_value(m, level, v->arg);
+  const Core *const *ends = quote_ends(m, level, v);
+  Core *c;
+  if (path == NULL || r == NULL || ends == NULL)
+    return NULL;
+  c = new_core(m, CORE_PAPP);
+  if (c == NULL)
+    return NULL;
+  c->a = path;
+  c->b = r;
+  c->args = ends;
+  c->argc = 2;
   return c;
 }
 
@@ -1096,6 +1405,14 @@ static const Core *quote_inner(Machine *m, uint32_t level, const Value *v) {
   case VAL_OP:
   case VAL_STUCK:
     return quote_op(m, level, v);
+  case VAL_PLAM:
+    return quote_binder(m, level, v, CORE_PLAM);
+  case VAL_PATHP:
+    return quote_binder(m, level, v, CORE_PATHP);
+  case VAL_IVAL:
+    return quote_ival(m, level, v);
+  case VAL_PAPP:
+    return quote_papp(m, level, v);
   }
   internal(m, "an unknown value");
   return NULL;
@@ -1169,6 +1486,8 @@ static int name_used(const Printer *p, const char *name) {
   uint32_t j;
   if (name[0] == '%')
     return 1; /* checker-generated eta names are not surface identifiers */
+  if (strcmp(name, "PathP") == 0)
+    return 1; /* printed path types use this builtin outside OP_NAMES */
   for (i = 0; i < p->name_count; i++)
     if (p->names[i] != NULL && strcmp(name, p->names[i]) == 0)
       return 1;
@@ -1200,7 +1519,8 @@ static void print_binder(Printer *p, const Value *v) {
   const char *name = v->name != NULL ? v->name : "x";
   char fresh[32];
   uint32_t suffix = 0;
-  const Value *body = closure_apply(p->m, v, val_var(p->m, level));
+  int interval = v->kind == VAL_PLAM || v->kind == VAL_PATHP;
+  const Value *body = closure_apply(p->m, v, interval ? val_ivar(p->m, level) : val_var(p->m, level));
   int binder_dom = v->dom != NULL && (v->dom->kind == VAL_PI || v->dom->kind == VAL_SIGMA || v->dom->kind == VAL_LAM || v->dom->kind == VAL_UNIV);
   while (name_used(p, name)) {
     snprintf(fresh, sizeof fresh, "_x%u", suffix++);
@@ -1208,7 +1528,13 @@ static void print_binder(Printer *p, const Value *v) {
   }
   switch (v->kind) {
   case VAL_LAM:
+  case VAL_PLAM:
     put(p, "fun ");
+    put(p, name);
+    put(p, " => ");
+    break;
+  case VAL_PATHP:
+    put(p, "PathP (fun ");
     put(p, name);
     put(p, " => ");
     break;
@@ -1238,6 +1564,8 @@ static void print_binder(Printer *p, const Value *v) {
   case VAL_VAR:
   case VAL_APP:
   case VAL_STUCK:
+  case VAL_IVAL:
+  case VAL_PAPP:
     break;
   }
   if (p->extra_count < PRINT_NAMES_MAX)
@@ -1245,6 +1573,34 @@ static void print_binder(Printer *p, const Value *v) {
   p->extra_count++;
   print_value(p, body, v->kind == VAL_SIGMA);
   p->extra_count--;
+  if (v->kind == VAL_PATHP) {
+    put(p, ") ");
+    print_value(p, v->args[0], 1);
+    put(p, " ");
+    print_value(p, v->args[1], 1);
+  }
+}
+
+/* A join of meets: a meet binds closer than a join, so only an atom
+   position needs parentheses. */
+static void print_ival(Printer *p, const Value *v, int atom) {
+  int parens = atom && (v->conj_count > 1u || (v->conj_count == 1u && v->conj[0].count > 1u));
+  uint32_t i;
+  uint32_t j;
+  uint32_t lit;
+  put(p, v->conj_count == 0 ? "i0" : "");
+  put(p, parens ? "(" : "");
+  for (i = 0; i < v->conj_count; i++) {
+    put(p, i == 0 ? "" : " \\/ ");
+    put(p, v->conj[i].count == 0 ? "i1" : "");
+    for (j = 0; j < v->conj[i].count; j++) {
+      lit = v->conj[i].lits[j];
+      put(p, j == 0 ? "" : " /\\ ");
+      put(p, (lit & 1u) != 0 ? "~" : "");
+      put(p, var_name(p, lit >> 1u));
+    }
+  }
+  put(p, parens ? ")" : "");
 }
 
 static void print_other(Printer *p, const Value *v, int atom) {
@@ -1268,11 +1624,17 @@ static void print_other(Printer *p, const Value *v, int atom) {
   case VAL_STUCK:
     put(p, op_name(p->m, v->op, v->inst, v->field));
     return;
+  case VAL_IVAL:
+    print_ival(p, v, atom);
+    return;
   case VAL_UNIV:
   case VAL_APP:
   case VAL_LAM:
   case VAL_PI:
   case VAL_SIGMA:
+  case VAL_PLAM:
+  case VAL_PATHP:
+  case VAL_PAPP:
     break;
   }
   if (atom)
@@ -1290,13 +1652,21 @@ static void print_other(Printer *p, const Value *v, int atom) {
   case VAL_LAM:
   case VAL_PI:
   case VAL_SIGMA:
+  case VAL_PLAM:
+  case VAL_PATHP:
     print_binder(p, v);
+    break;
+  case VAL_PAPP:
+    print_value(p, v->dom, v->dom->kind != VAL_PAPP && v->dom->kind != VAL_APP && v->dom->kind != VAL_VAR);
+    put(p, " @ ");
+    print_value(p, v->arg, 1);
     break;
   case VAL_NAT:
   case VAL_TRAP:
   case VAL_VAR:
   case VAL_OP:
   case VAL_STUCK:
+  case VAL_IVAL:
     break;
   }
   if (atom)

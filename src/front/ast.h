@@ -12,7 +12,11 @@ typedef enum {
   TERM_LAM,   /* fun (name : left) => right; left is NULL for a bare binder */
   TERM_PI,    /* (name : left) -> right; name is NULL for left -> right */
   TERM_SIGMA, /* Sigma (name : left) right, or (name : left) * right */
-  TERM_UNIV   /* Type nat */
+  TERM_UNIV,  /* Type nat */
+  TERM_PAPP,  /* left @ right: a path applied to an interval term */
+  TERM_INEG,  /* ~left */
+  TERM_IMEET, /* left /\ right */
+  TERM_IJOIN  /* left \/ right */
 } TermKind;
 
 typedef struct Term Term;

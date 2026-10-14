@@ -7,7 +7,7 @@ core-name.lang REFUSE_NAME
 domain-name.lang REFUSE_NAME
 reserved.lang REFUSE_NAME
 duplicate.lang REFUSE_NAME
-bad-refl.lang TYPE_REFL
+bad-refl.lang PATH_END
 mismatch.lang TYPE_MISMATCH
 unknown.lang NAME_UNKNOWN
 universe.lang TYPE_MISMATCH
@@ -21,4 +21,14 @@ bind-carrier.lang TYPE_MISMATCH
 dependent-result.lang TYPE_MISMATCH
 cumulative.lang TYPE_MISMATCH
 type2.lang TYPE_UNIVERSE
-bad-eta.lang TYPE_REFL
+bad-eta.lang PATH_END
+path-end.lang PATH_END
+path-uip.lang PATH_UIP
+path-k.lang PATH_UIP
+path-ev.lang PATH_UIP
+interval-type.lang INTERVAL_TYPE
+interval-pi.lang INTERVAL_TYPE
+interval-path.lang INTERVAL_TYPE
+path-level.lang TYPE_MISMATCH
+path-sym.lang PATH_UIP
+pathp-level.lang TYPE_MISMATCH

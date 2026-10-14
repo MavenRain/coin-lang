@@ -73,18 +73,23 @@ static int ready(Out *o, const Value *v) {
   switch (v->kind) {
   case VAL_NAT:
   case VAL_OP:
+  case VAL_PLAM:
     return 1;
   case VAL_TRAP:
     return diag_fail(o->m->diag, "EVAL_OVERFLOW", o->def, "the instance value traps (a Nat overflow)");
   case VAL_UNIV:
   case VAL_PI:
   case VAL_SIGMA:
+  case VAL_PATHP:
     return refuse(o, "a type");
   case VAL_LAM:
     return refuse(o, "a function");
+  case VAL_IVAL:
+    return refuse(o, "an interval term");
   case VAL_VAR:
   case VAL_APP:
   case VAL_STUCK:
+  case VAL_PAPP:
     return refuse(o, "a stuck term");
   }
   return internal(o, "an unknown value kind");
@@ -100,10 +105,11 @@ static int sum_json(Out *o, const Value *type, const Value *v) {
   return internal(o, "a Sum value that is not inl or inr");
 }
 
-/* none is null, so `some` wraps a value that can be null (ledger rule). */
+/* none is null, so `some` wraps a value that can be null (ledger rule). A
+   path is never null. */
 static int option_json(Out *o, const Value *type, const Value *v) {
   const Value *elem = type->args[0];
-  int wrap = val_is(elem, OP_OPTION) || val_is(elem, OP_EQ);
+  int wrap = val_is(elem, OP_OPTION);
   if (val_is(v, OP_NONE))
     return put_text(o, "null");
   if (!val_is(v, OP_SOME))
@@ -180,8 +186,6 @@ static int op_json(Out *o, const Value *type, const Value *v) {
     return val_is(v, OP_FLAG_NO) ? put_text(o, "false") : internal(o, "a Flag value that is not yes or no");
   case OP_UNIT:
     return put_text(o, "{}");
-  case OP_EQ:
-    return put_text(o, "null");
   case OP_PROD:
     if (!val_is(v, OP_PAIR))
       return internal(o, "a Prod value that is not a pair");
@@ -206,7 +210,7 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_NIL:
   case OP_CONS:
   case OP_PACK:
-  case OP_REFL:
+  case OP_INTERVAL:
   case OP_CTOR:
   case OP_FIRST:
   case OP_SECOND:
@@ -222,10 +226,6 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_FILTER:
   case OP_WITNESS:
   case OP_PAYLOAD:
-  case OP_SYMM:
-  case OP_TRANS:
-  case OP_TRANSPORT:
-  case OP_CONG:
   case OP_NAT_ADD:
   case OP_NAT_SUB:
   case OP_NAT_MUL:
@@ -249,12 +249,94 @@ static int pack_json(Out *o, const Value *type, const Value *v) {
   return payload != NULL && put_text(o, ",\"payload\":") && value_json(o, payload, v->args[1]) && put_text(o, "}");
 }
 
+/* The printed normal form of V, as a string. */
+static int printed_json(Out *o, const Value *v) {
+  char *text = arena_alloc(o->m->arena, JSON_TYPE_MAX);
+  if (text == NULL)
+    return diag_fail(o->m->diag, "OOM", o->def, "the arena limit is reached");
+  if (!value_print(o->m, NULL, 0, v, text, JSON_TYPE_MAX))
+    return diag_fail(o->m->diag, "JSON_TYPE", o->def, "a path or its point exceeds the printer limits");
+  return put_string(o, text);
+}
+
+/* A point that is a function or a type has no JSON form, so its printed
+   normal form is the point (a string). */
+static int point_json(Out *o, const Value *type, const Value *v) {
+  if (type == NULL || v == NULL)
+    return 0;
+  if (type->kind != VAL_PI && type->kind != VAL_UNIV)
+    return value_json(o, type, v);
+  return printed_json(o, v);
+}
+
+/* 1 when C mentions the variable at de Bruijn index INDEX. An operation
+   binds no variable. */
+static int mentions(const Core *c, uint32_t index) {
+  if (c == NULL)
+    return 0;
+  switch (c->kind) {
+  case CORE_VAR:
+    return c->index == index;
+  case CORE_GLOBAL:
+  case CORE_NAT:
+  case CORE_TRAP:
+  case CORE_UNIV:
+  case CORE_IZERO:
+  case CORE_IONE:
+    return 0;
+  case CORE_LAM:
+  case CORE_PLAM:
+    return mentions(c->b, index + 1u);
+  case CORE_PI:
+  case CORE_SIGMA:
+    return mentions(c->a, index) || mentions(c->b, index + 1u);
+  case CORE_PATHP:
+    return mentions(c->b, index + 1u) || mentions(c->args[0], index) || mentions(c->args[1], index);
+  case CORE_PAPP:
+    return mentions(c->a, index) || mentions(c->b, index) || mentions(c->args[0], index) || mentions(c->args[1], index);
+  case CORE_APP:
+  case CORE_INEG:
+  case CORE_IMEET:
+  case CORE_IJOIN:
+    return mentions(c->a, index) || mentions(c->b, index);
+  case CORE_OP: {
+    uint32_t i;
+    for (i = 0; i < c->argc; i++)
+      if (mentions(c->args[i], index))
+        return 1;
+    return 0;
+  }
+  }
+  return 1;
+}
+
+/* Rule 5: the body at a fresh interval variable does not mention it, so the
+   path is refl of its point. Rule 6: else the ends and the printed normal
+   form of the path. An instance is closed, so the fresh level is 0. */
+static int path_json(Out *o, const Value *type, const Value *v) {
+  Machine *m = o->m;
+  const Value *a = type->args[0];
+  const Value *b = type->args[1];
+  const Core *body = quote_value(m, 1u, path_apply(m, v, val_ivar(m, 0u), a, b));
+  const Value *point;
+  if (body == NULL)
+    return 0;
+  point = path_apply(m, v, val_iend(m, 0), a, b);
+  if (!mentions(body, 0u))
+    return put_text(o, "{\"refl\":") && point_json(o, closure_apply(m, type, val_iend(m, 0)), point) && put_text(o, "}");
+  return put_text(o, "{\"from\":") && point_json(o, closure_apply(m, type, val_iend(m, 0)), a)
+    && put_text(o, ",\"to\":") && point_json(o, closure_apply(m, type, val_iend(m, 1)), b)
+    && put_text(o, ",\"term\":") && printed_json(o, v) && put_text(o, "}");
+}
+
 static int typed_json(Out *o, const Value *type, const Value *v) {
   switch (type->kind) {
   case VAL_OP:
     return op_json(o, type, v);
   case VAL_SIGMA:
     return pack_json(o, type, v);
+  case VAL_PATHP:
+    return path_json(o, type, v);
   case VAL_PI:
     return refuse(o, "a function");
   case VAL_UNIV:
@@ -265,6 +347,9 @@ static int typed_json(Out *o, const Value *type, const Value *v) {
   case VAL_VAR:
   case VAL_APP:
   case VAL_STUCK:
+  case VAL_PLAM:
+  case VAL_IVAL:
+  case VAL_PAPP:
     return refuse(o, "a value of a stuck type");
   }
   return internal(o, "an unknown type kind");
@@ -282,7 +367,8 @@ static int value_json(Out *o, const Value *type, const Value *v) {
   return ok;
 }
 
-/* Functions, types, families and proofs are not instances. */
+/* Functions, types and families are not instances. A path is an instance
+   (R8). */
 static int is_instance(const DefInfo *d) {
   if (d->origin != ORIGIN_PROGRAM)
     return 0;
@@ -291,7 +377,7 @@ static int is_instance(const DefInfo *d) {
   case VAL_UNIV:
     return 0;
   case VAL_OP:
-    return !val_is(d->type, OP_EQ);
+  case VAL_PATHP:
   case VAL_SIGMA:
   case VAL_NAT:
   case VAL_TRAP:
@@ -299,6 +385,9 @@ static int is_instance(const DefInfo *d) {
   case VAL_VAR:
   case VAL_APP:
   case VAL_STUCK:
+  case VAL_PLAM:
+  case VAL_IVAL:
+  case VAL_PAPP:
     return 1;
   }
   return 1;

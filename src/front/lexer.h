@@ -16,6 +16,10 @@ typedef enum {
   TOK_FATARROW, /* => */
   TOK_STAR,
   TOK_BAR,
+  TOK_AT,       /* @ */
+  TOK_TILDE,    /* ~ */
+  TOK_MEET,     /* /\ */
+  TOK_JOIN,     /* \/ */
   TOK_KW_DEF,
   TOK_KW_REC,
   TOK_KW_FUN,

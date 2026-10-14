@@ -25,7 +25,6 @@ typedef enum {
   OP_SUM,
   OP_OPTION,
   OP_LIST,
-  OP_EQ,
   OP_FAMILY,
   OP_UNIT_VAL,
   OP_FLAG_YES,
@@ -38,7 +37,6 @@ typedef enum {
   OP_NIL,
   OP_CONS,
   OP_PACK,
-  OP_REFL,
   OP_CTOR,
   OP_FIRST,
   OP_SECOND,
@@ -54,17 +52,14 @@ typedef enum {
   OP_FILTER,
   OP_WITNESS,
   OP_PAYLOAD,
-  OP_SYMM,
-  OP_TRANS,
-  OP_TRANSPORT,
-  OP_CONG,
   OP_NAT_ADD,
   OP_NAT_SUB,
   OP_NAT_MUL,
   OP_NAT_EQ,
   OP_NAT_LE,
   OP_FLAG_IF,
-  OP_PROJ
+  OP_PROJ,
+  OP_INTERVAL /* the sort I: never a type, only the type of an interval term */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -84,7 +79,15 @@ typedef enum {
   CORE_PI,     /* (name : a) -> b */
   CORE_SIGMA,  /* Sigma (name : a) b */
   CORE_APP,    /* a b */
-  CORE_OP      /* a core name with all of its arguments */
+  CORE_OP,     /* a core name with all of its arguments */
+  CORE_PLAM,   /* fun name => b, name an interval variable */
+  CORE_PAPP,   /* a @ b; args[0], args[1]: the two ends of the path a */
+  CORE_PATHP,  /* PathP (fun name => b) args[0] args[1] */
+  CORE_IZERO,  /* i0 */
+  CORE_IONE,   /* i1 */
+  CORE_INEG,   /* ~a */
+  CORE_IMEET,  /* a /\ b */
+  CORE_IJOIN   /* a \/ b */
 } CoreKind;
 
 typedef struct Core Core;
@@ -114,8 +117,19 @@ typedef enum {
   VAL_OP,   /* a canonical value or a type */
   VAL_VAR,  /* neutral: a variable at a de Bruijn level */
   VAL_APP,  /* neutral: a neutral function applied to a value */
-  VAL_STUCK /* neutral: an operation with a neutral scrutinee */
+  VAL_STUCK, /* neutral: an operation with a neutral scrutinee */
+  VAL_PLAM,  /* a path abstraction (a closure on an interval variable) */
+  VAL_PATHP, /* a path type: the line is the closure, args[0..1] the ends */
+  VAL_IVAL,  /* an interval term in normal form */
+  VAL_PAPP   /* neutral: a neutral path at an interval value */
 } ValKind;
+
+/* An interval literal is level * 2 + 1 for a negated variable, else
+   level * 2. A conjunction is a sorted array of distinct literals. */
+typedef struct {
+  const uint32_t *lits;
+  uint32_t count;
+} IConj;
 
 typedef struct Value Value;
 typedef struct Env Env;
@@ -135,10 +149,15 @@ struct Value {
   const Value *const *args;
   uint32_t argc;
   const char *name; /* LAM, PI, SIGMA: the binder */
-  const Value *dom; /* PI, SIGMA: the domain. APP: the function. */
-  const Value *arg; /* APP: the argument. A PI with no body: the codomain. */
-  const Env *env;   /* LAM, PI, SIGMA: the closure */
+  const Value *dom; /* PI, SIGMA: the domain. APP, PAPP: the function. */
+  const Value *arg; /* APP, PAPP: the argument. A PI with no body: the codomain. */
+  const Env *env;   /* LAM, PI, SIGMA, PLAM, PATHP: the closure */
   const Core *body;
+  /* IVAL: the join of CONJ_COUNT conjunctions, in a canonical order, with
+     no conjunction that contains another. i0 has no conjunction; i1 has
+     one empty conjunction. */
+  const IConj *conj;
+  uint32_t conj_count;
 };
 
 typedef struct {
@@ -197,6 +216,13 @@ typedef struct {
    NULL result, so a caller can test once at the end. */
 const Value *val_nat(Machine *m, uint64_t n);
 const Value *val_var(Machine *m, uint32_t level);
+/* The interval variable at LEVEL. */
+const Value *val_ivar(Machine *m, uint32_t level);
+/* i0 when SIDE is 0, else i1. */
+const Value *val_iend(Machine *m, int side);
+/* P @ R. A and B are the ends of P (NULL only in a value that conversion
+   alone reads). A neutral P at i0 gives A, at i1 gives B. */
+const Value *path_apply(Machine *m, const Value *p, const Value *r, const Value *a, const Value *b);
 const Value *val_univ(Machine *m, uint64_t level);
 const Value *val_op(Machine *m, ValKind kind, Op op, uint32_t inst, uint32_t field, const Value *const *args, uint32_t argc);
 const Value *val_make(Machine *m, Op op, uint32_t inst, uint32_t argc, const Value *a, const Value *b, const Value *c);
@@ -208,7 +234,7 @@ const Env *env_push(Machine *m, const Env *env, const Value *value);
 const Value *def_value(Machine *m, uint32_t index);
 const Value *eval_core(Machine *m, const Env *env, const Core *core);
 const Value *apply_value(Machine *m, const Value *fn, const Value *arg);
-/* The body of a LAM, PI or SIGMA value at ARG. */
+/* The body of a LAM, PI, SIGMA, PLAM or PATHP value at ARG. */
 const Value *closure_apply(Machine *m, const Value *binder, const Value *arg);
 /* 1 when A and B have the same normal form. LEVEL is the next free level. */
 int conv_values(Machine *m, uint32_t level, const Value *a, const Value *b);
