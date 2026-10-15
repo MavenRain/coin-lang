@@ -370,3 +370,133 @@ existing path-syntax fallback for a stuck transport. Against the original
 staged implementation, the first three fail with INTERNAL, GLUE_BOUNDARY
 and JSON_TYPE respectively. The corrected gate passes with 27 path
 regressions and the other counts above unchanged.
+
+## S3c
+
+S3c (`hcomp` at Glue, `hcomp` in the universe, `uaArrow`) is complete,
+and with it S3. `hcomp` at `Glue A phi sys` gives a `glue`: for each key
+of `phi`, the branch is `hcomp T psi u u0`, and the base is an `hcomp` in
+`A` of `unglue` of the tube and `unglue u0`, with `witness e` of the
+filler in `T` at each key of `phi` (CCHM). `hcomp (Type 0) psi (fun (j :
+I) => [ k -> A, ... ]) A0` gives `Glue A0 psi (fun (_ : I) => [ k -> pack
+(A at i1) e, ... ])`. Each `e` is `lineToEquiv` of the reversed line: the
+transport of `idEquiv (A at i1)` along `fun j => Equiv (A at i1) (A at
+~j)` (the closure `CLOS_EQUIV_LINE`). A key that is `i0` gives no branch.
+`rule_hcomp` has no `HCOMP_UNIVERSE` refusal now, and the cap check
+applies at the universe too (`HCOMP_CAP`). The six universe guards stay
+(Q-S3c-1 (a)): `hcomp` in `Type 0` reduces only at a direct `hcomp (Type
+0)`. Where a Pi, Sigma, PathP or data rule reaches the universe, the
+outer operation stays stuck. `domain/domain.lang` adds `uaArrow A B C e
+f0 f1 h : PathP (fun (i : I) => (ua A B e @ i) -> C) f0 f1`, by `fun i a
+=> hcomp C (~i \/ i) (fun (j : I) => [ ~i -> h a @ ~j, i -> f1 a ]) (f1
+(unglue a))` (agda/cubical `ua→`, a constant `C`).
+
+FIX B (session 20). Transport along a line made by `hcomp` in `Type 0`
+first stopped with `INTERNAL` (the evaluator found a line that changes its
+type former). The cause was in `glue_at`: one slot (`glue_out`,
+`glue_raw`) held the last Glue that `reduce_glue` reduced at a true key,
+and the slot was wrong in 3 ways: `hcomp_true` reduced an `hcomp` in `Type
+0` at a true key with no Glue record; a nested `glue_at` (through
+`CLOS_GLUE_BASE`) wrote over the slot; and two equal pointers (a cached
+`loopRot1 @ i1` and the outer branch type) took the wrong record. The fix
+has 3 parts. (1) `hcomp` does not call `hcomp_true` in `Type 0`: a true
+key goes to `hcomp_univ`, so its Glue makes a record. (2) `Machine` holds
+a list of `GlueRec` (`out`, `raw`, newest first) in place of the slot. At
+a true key, `reduce_glue` returns a fresh shallow copy of `T` (a unique
+pointer) and pushes a record for it. (3) `glue_at` keeps the list head,
+runs `line_at`, and looks only at the new records. The arena grows by one
+record for each true-key reduction.
+
+Gate: `make check` is GREEN at examples 15, parse 11, check 53, evals 35,
+json 15, build refusals 4, regressions 6, printer 2, path regressions 30
+(0 failed). The clang `-Wswitch-enum` pass is clean. The dash scan is
+clean.
+
+Tests: `examples/univ.lang` (`loopRot1`, `transTwoLoops`, `transTwo0`,
+`transTwo1`, `transTwo2`, `gRot`, `hcompGlue`, `plus3`, `minus3`,
+`uaArrowPlus3`, `uaArrowEnd0`, `uaArrowEnd1`, `transTwo`) and
+`test/json/univ.json` (8 instances). `transTwoLoops` is the composite of
+two `loopRot1` lines: its table is `[2, 0, 1]`, the table of `loopRot2`.
+`transTwo0`, `transTwo1` and `transTwo2` check its transport by refl (`0`
+to `2`, `1` to `0`, `2` to `1`). `uaArrowEnd0` checks `(f after plus3) 9`
+= `2` at `i0`, and `uaArrowEnd1` checks `f 9` = `10` at `i1`, for `f = b +
+1`. The check refusal `hcomp-universe-cap` (`HCOMP_CAP`) replaces
+`hcomp-universe` (now accepted). The eval `univ transTwo` (`0`).
+
+Deviations from the plan (kickoff section 2; the kickoff text now gives
+the rulings):
+
+- Counts. S3c initially kept check at 52: S3b ended at 52, and S3c removes
+  1 and adds 1. The review adds the higher-universe refusal, giving 53.
+  Build refusals are 4, not 2 (S3a ended at 4). S3b ended at 27 C path
+  cases; the planned S3c slice added none (Q-S3c-1 (a), below), and the
+  review adds 3, giving 30.
+- Q-S3c-1 (a): the six universe guards stay, and the planned C case "a
+  stuck `hcomp` in the universe at a neutral face round-trips" is dropped.
+  With the first guard (`CLOS_HCOMP_PI`) lifted, the path regression
+  `universe function composition` stops with `OOM`. Cause: transport of
+  `idEquiv` along the `Equiv` line has no regularity, so `e` expands the
+  `isContr` proof into nested stuck `hcomp Nat` terms, also on a constant
+  line. `value_print` of the def value uses 456 MB of arena (the
+  regression arena is 128 MB) and gives 14302 chars (the buffer is 8192).
+  With a 1 GB arena the print completes, but the replay is refused:
+  `GLUE_EQUIV: replay: ... TYPE_MISMATCH` (a printed sub-term is typed
+  only under its face, and the checker has no face substitution). Guards 2
+  to 6 give the same `OOM` in the other universe regressions.
+- Q-S3c-2 (a): `transTwoLoops` is the inline form `fun (j : I) => hcomp
+  (Type 0) (~j \/ j) (fun (i : I) => [ ~j -> Fin 3, j -> loopRot1 @ i ])
+  (loopRot1 @ j)`. The planned `trans (Type 0) ...` is refused
+  (`TYPE_MISMATCH`: Type 1, not Type 0), because the domain `trans` takes
+  `A : Type 0`.
+- `hcompGlue`. The planned closed form is a JSON instance whose type holds
+  the Glue type `loopRot1 @ j`, and `langc build` refuses it (`JSON_TYPE`:
+  the instance type has no source syntax). So `hcompGlue` is a Pi def
+  `(x : Fin 3) -> PathP ...`, and finAll checks `x` = 0, 1, 2. With the
+  planned face `~j`, the type fails at a neutral `x` (`PATH_END`: the `i1`
+  end stays a stuck `hcomp (Fin 3) i0 ...`, no regularity). So the system
+  is `(~j \/ j)`, with the branch `gRot x @ j` on each face.
+- `uaArrowPlus3`. A top-level path over `ua (Fin 11) (Fin 11) e @ i` is
+  refused by `langc build` in the same way (`JSON_TYPE`). So
+  `uaArrowPlus3` is a Pi def over `f : Fin 11 -> Fin 11`, and the closed
+  ends `uaArrowEnd0` and `uaArrowEnd1` are the JSON instances.
+- G21 and G22 are new rows, for FIX B parts 1 and 2. FIX B part 3 (the
+  record scan) has no row.
+
+Mutants: one at a time, `make -B` for each build. Each file was restored and
+its `shasum` was confirmed. Each kill came from a test, not from a compile
+error.
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| G17 | `hcomp_glue`: the `T` part dropped (`glue` of `a1` only) | `univ.lang` (`hcompGlue`: `FIN_CASE`, case 0: `PATH_END`, the `i1` end is `1`, not the `glue`), `univ transTwo`, `univ.json` |
+| G18 | `kan_apply` `CLOS_EQUIV_LINE`: `b j`, not `b (~j)` (the line not reversed) | `univ.lang` (`transTwo0`: `PATH_END`, `0`, not `2`), `univ transTwo`, `univ.json` |
+| G19 | `rule_hcomp`: `HCOMP_UNIVERSE` put back before the face check | `univ.lang` (`transTwoLoops`: `HCOMP_UNIVERSE`), `univ.json` |
+| G20 | `rule_hcomp`: no cap check at the universe | `hcomp-universe-cap` (`PATH_END`, not `HCOMP_CAP`) |
+| G21 | `hcomp`: `hcomp_true` kept in `Type 0` (FIX B part 1) | `univ.lang` (`transTwo0`: `INTERNAL`, a line that changes its type former), `univ.json` |
+| G22 | `reduce_glue`: at a true key, record and return `T`, not a fresh copy (FIX B part 2) | `univ.lang` (`transTwo0`: `PATH_END`, `0`, not `2`), `univ.json` |
+
+G18, G21 and G22 were first killed by scratch probes (session 20); the
+table gives the kills by the repo tests (session 21).
+
+Review fixes:
+
+- System conversion compares branch values and face coverage in both
+  directions. A Glue composition with keys `~j, j` now agrees with a
+  value written using the combined key `~j \/ j`, which the checker splits
+  in the opposite order. Redundant subdivisions also agree. Different
+  branch values and missing coverage still compare unequal.
+- `glue_restrict` selects a branch when the requested face implies its
+  key. A two-dimensional constant composition whose Glue type has an
+  additional `i /\ ~j` branch now computes when the element uses `~j`.
+  Exact key comparison previously left a Glue element inside an hcomp
+  at `Fin 3`, causing `PATH_END`.
+- `hcomp` above `Type 0` is refused with `HCOMP_UNIVERSE`. Previously
+  `hcomp (Type 1) i0 (fun (_ : I) => []) (Type 0)` checked but normalized
+  to `Glue (Type 0) i0 (fun (_ : I) => [])`, which fails to check because
+  Glue is restricted to small types.
+
+The three new C path cases check system conversion, reordered Glue
+composition and stronger Glue faces. They fail against the original
+staged evaluator and pass with the fixes. The check refusal
+`hcomp-higher-universe` covers the universe restriction. The full gate,
+including the clang pass, is green at the counts above.

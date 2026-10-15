@@ -1288,8 +1288,8 @@ static const Core *rule_hcomp(Call *k) {
   uint32_t i;
   if (av == NULL)
     return NULL;
-  if (av->kind == VAL_UNIV)
-    return nul(FAIL(c, "HCOMP_UNIVERSE", "hcomp at the universe %s needs Glue, which is not in this stage (S3)", show(c, av)));
+  if (av->kind == VAL_UNIV && av->nat != 0u)
+    return nul(FAIL(c, "HCOMP_UNIVERSE", "hcomp at Type %llu needs Glue above Type 0", (unsigned long long)av->nat));
   phi = check(c, k->args[1], interval_type(c));
   if (phi == NULL)
     return NULL;

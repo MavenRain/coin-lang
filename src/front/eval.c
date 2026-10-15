@@ -329,6 +329,12 @@ const Value *face_meet(Machine *m, const Value *a, const Value *b) {
   return face_norm(m, ival_meet(m, a, b));
 }
 
+static int face_implies(Machine *m, const Value *a, const Value *b) {
+  const Value *face = face_norm(m, a);
+  const Value *meet = face == NULL ? NULL : face_meet(m, face, b);
+  return face != NULL && meet != NULL && ival_equal(face, meet);
+}
+
 const Value *ival_face(Machine *m, const Value *r, uint32_t level, int side) {
   /* The literal that the map makes true, and the one it makes false. */
   uint32_t keep = level * 2u + (side != 0 ? 0u : 1u);
@@ -1195,8 +1201,6 @@ static const Value *kan_closure(Machine *m, ValKind kind, ClosTag tag, uint32_t 
 
 static const Value *transp(Machine *m, const Value *line, const Value *phi, const Value *base);
 static const Value *hcomp(Machine *m, const Value *ty, const Value *phi, const Value *sys, const Value *base);
-/* Structural rules that reach a universe retain the outer operation:
-   composing in the universe needs Glue, and surface hcomp refuses it. */
 static const Value *hcomp_stuck(Machine *m, const Value *ty, const Value *phi, const Value *sys, const Value *base);
 static const Value *comp(Machine *m, const Value *line, const Value *phi, const Value *sys, const Value *base);
 static const Value *hfill(Machine *m, const Value *ty, const Value *phi, const Value *sys, const Value *base, const Value *r);
@@ -1206,6 +1210,11 @@ static const Value *transp_pathp_at(Machine *m, const Value *line, const Value *
 static const Value *glue_at(Machine *m, const Value *line, const Value *r);
 static const Value *glue_branch_at(Machine *m, const Value *line, const Value *keyf, uint32_t level, const Value *s);
 static const Value *transp_glue(Machine *m, const Value *line, const Value *psi, const Value *u0);
+static const Value *unglue_value(Machine *m, const Value *ty, const Value *g);
+static const Value *glue_restrict(Machine *m, const Value *x, const Value *key);
+static const Value *hcomp_glue(Machine *m, const Value *ty, const Value *phi, const Value *sys, const Value *base);
+static const Value *hcomp_univ(Machine *m, const Value *phi, const Value *sys, const Value *base);
+static const Value *domain_def(Machine *m, const char *name);
 
 /* The part FIELD (0: witness, 1: payload) of the Sigma value U. */
 static const Value *sigma_part(Machine *m, const Value *u, uint32_t field) {
@@ -1309,6 +1318,14 @@ static const Value *kan_apply(Machine *m, const Value *k, const Value *r) {
     return path_apply(m, apply_value(m, a[0], a[1]), r, a[2], a[1]);
   case CLOS_PATH_REV:
     return path_apply(m, a[0], ival_neg(m, r), a[1], a[2]);
+  case CLOS_SYS_UNGLUE:
+    return unglue_value(m, a[1], closure_apply(m, a[0], r));
+  case CLOS_GLUE_HFILL:
+    return apply_value(m, sigma_part(m, sigma_part(m, a[0], 1), 0), hfill(m, sigma_part(m, a[0], 0), a[1], a[2], a[3], r));
+  case CLOS_SYS_RESTRICT:
+    return glue_restrict(m, closure_apply(m, a[0], r), a[1]);
+  case CLOS_EQUIV_LINE:
+    return apply_value(m, apply_value(m, domain_def(m, "Equiv"), a[1]), closure_apply(m, a[0], ival_neg(m, r)));
   case CLOS_CORE:
     break;
   }
@@ -1698,7 +1715,9 @@ static const Value *hcomp(Machine *m, const Value *ty, const Value *phi, const V
     return NULL;
   if (base->kind == VAL_TRAP)
     return base;
-  if (ival_is_end(face, 1))
+  /* In U a true key goes to hcomp_univ, so that its Glue makes the record
+     that transp at Glue reads at an end. */
+  if (ival_is_end(face, 1) && ty->kind != VAL_UNIV)
     return hcomp_true(m, ty, face, sys, base);
   switch (ty->kind) {
   case VAL_PI:
@@ -1708,7 +1727,11 @@ static const Value *hcomp(Machine *m, const Value *ty, const Value *phi, const V
   case VAL_PATHP:
     return kan_closure4(m, VAL_PLAM, CLOS_HCOMP_PATHP, 0, 4, ty, face, sys, base);
   case VAL_OP:
+    if (val_is(ty, OP_GLUE) && ty->argc == 3u)
+      return hcomp_glue(m, ty, face, sys, base);
     return hcomp_data(m, ty, face, sys, base);
+  case VAL_UNIV:
+    return hcomp_univ(m, face, sys, base);
   case VAL_TRAP:
     return ty;
   case VAL_NAT:
@@ -1716,7 +1739,6 @@ static const Value *hcomp(Machine *m, const Value *ty, const Value *phi, const V
   case VAL_PLAM:
   case VAL_IVAL:
     return internal(m, "an hcomp in a value that is not a type");
-  case VAL_UNIV:
   case VAL_VAR:
   case VAL_APP:
   case VAL_STUCK:
@@ -1754,15 +1776,28 @@ static int glue_true(Machine *m, const Value *sys, const Value **out) {
    Else Glue is a type. */
 static const Value *reduce_glue(Machine *m, const Value *const *a, uint32_t n) {
   const Value *branch = NULL;
-  const Value *out;
+  const Value *t;
   const Value *raw;
+  Value *out;
+  GlueRec *rec;
   if (!glue_true(m, a[2], &branch))
     return glue_op(m, VAL_OP, OP_GLUE, a, n, 1);
-  /* Record after the branch eval, so a nested Glue does not win. */
-  out = sigma_part(m, branch, 0);
+  /* Record after the branch eval, so a nested Glue does not win. The
+     result is a fresh copy of T: glue_at finds a record by pointer, and a
+     cached T can be the result of two Glue values. */
+  t = sigma_part(m, branch, 0);
   raw = glue_op(m, VAL_OP, OP_GLUE, a, n, 1);
-  m->glue_out = out;
-  m->glue_raw = raw;
+  if (t == NULL)
+    return NULL;
+  out = arena_alloc(m->arena, sizeof *out);
+  rec = arena_alloc(m->arena, sizeof *rec);
+  if (out == NULL || rec == NULL)
+    return oom(m);
+  *out = *t;
+  rec->out = out;
+  rec->raw = raw;
+  rec->next = m->glue_recs;
+  m->glue_recs = rec;
   return out;
 }
 
@@ -1786,6 +1821,71 @@ static const Value *reduce_unglue(Machine *m, const Value *const *a, uint32_t n)
   if (val_is(a[3], OP_GLUE_ELEM) && a[3]->argc == 3u)
     return a[3]->args[2];
   return glue_op(m, VAL_STUCK, OP_UNGLUE, a, n, 1);
+}
+
+/* unglue G at the Glue type TY (args A, phi, sys), or NULL for a NULL G. */
+static const Value *unglue_value(Machine *m, const Value *ty, const Value *g) {
+  const Value *ua[4];
+  if (g == NULL)
+    return NULL;
+  ua[0] = ty->args[0];
+  ua[1] = ty->args[1];
+  ua[2] = ty->args[2];
+  ua[3] = g;
+  return reduce_unglue(m, ua, 4);
+}
+
+/* X restricted to the Glue key KEY. For a glue element X (args phi, sys,
+   a), this is the branch at i1 of a system key implied by KEY.
+   Else X. There is no value-level face substitution: under KEY, u0 and
+   the tubes of hcomp at Glue are glue elements, not T elements. */
+static const Value *glue_restrict(Machine *m, const Value *x, const Value *key) {
+  const Value *sys;
+  uint32_t k;
+  if (x == NULL || !val_is(x, OP_GLUE_ELEM) || x->argc != 3u)
+    return x;
+  sys = x->args[1];
+  for (k = 0; k + 1u < sys->argc; k += 2u)
+    if (face_implies(m, key, sys->args[k]))
+      return line_at(m, sys->args[k + 1u], val_iend(m, 1));
+  return x;
+}
+
+/* hcomp at Glue A phi sys (S3c item 11, CCHM): glue [phi_k -> hcomp T_k
+   psi u u0] a1, with a1 = hcomp A (psi \/ phi) [psi -> unglue (u j), phi_k
+   -> witness e_k (hfill T_k psi u u0 j)] (unglue u0). One branch for each
+   key phi_k of the Glue system, as transp_glue. u and u0 are restricted
+   to phi_k (glue_restrict) in the T_k parts. */
+static const Value *hcomp_glue(Machine *m, const Value *ty, const Value *phi, const Value *sys, const Value *base) {
+  const Value *gs = ty->args[2];
+  const Value *sys_a = sys_map(m, sys, CLOS_SYS_UNGLUE, 0, 1, ty, NULL, NULL);
+  const Value **sg;
+  const Value *pack;
+  const Value *sys_k;
+  const Value *base_k;
+  const Value *ga[3];
+  uint32_t k;
+  sg = arena_alloc(m->arena, ((size_t)gs->argc + 1u) * sizeof *sg);
+  if (sg == NULL)
+    return oom(m);
+  for (k = 0; k + 1u < gs->argc; k += 2u) {
+    pack = line_at(m, gs->args[k + 1u], val_iend(m, 1));
+    sys_k = sys_map(m, sys, CLOS_SYS_RESTRICT, 0, 1, gs->args[k], NULL, NULL);
+    base_k = glue_restrict(m, base, gs->args[k]);
+    if (sys_k == NULL)
+      return NULL;
+    sys_a = sys_add(m, sys_a, gs->args[k], kan_closure4(m, VAL_PLAM, CLOS_GLUE_HFILL, 0, 4, pack, phi, sys_k, base_k));
+    sg[k] = gs->args[k];
+    sg[k + 1u] = constant_line(m, hcomp(m, sigma_part(m, pack, 0), phi, sys_k, base_k));
+    if (sg[k + 1u] == NULL || sys_a == NULL)
+      return NULL;
+  }
+  ga[0] = ty->args[1];
+  ga[1] = system_value(m, sg, gs->argc);
+  ga[2] = hcomp(m, ty->args[0], face_join(m, phi, ty->args[1]), sys_a, unglue_value(m, ty, base));
+  if (ga[1] == NULL || ga[2] == NULL)
+    return NULL;
+  return reduce_glue_elem(m, ga, 3);
 }
 
 /* transp at Glue (S3b item 8, CCHM as cubicaltt compGlue). */
@@ -1835,19 +1935,21 @@ static const Value *ival_subst(Machine *m, const Value *phi, uint32_t level, con
 }
 
 /* The OP_GLUE value of the Glue line L at R. A true key reduces Glue to T,
-   so then the value that reduce_glue records gives A, phi and sys. The
-   outermost Glue reduces last, so the record is its value. */
+   so then the record that reduce_glue makes gives A, phi and sys. */
 static const Value *glue_at(Machine *m, const Value *line, const Value *r) {
+  const GlueRec *h0 = m->glue_recs;
+  const GlueRec *rec;
   const Value *t;
-  m->glue_out = NULL;
-  m->glue_raw = NULL;
   t = line_at(m, line, r);
   if (t == NULL)
     return NULL;
-  /* A reduced branch type can itself be Glue. Its outer record takes
-     priority over the branch type's own Glue metadata. */
-  if (t == m->glue_out && m->glue_raw != NULL)
-    return m->glue_raw;
+  /* Only the records of this evaluation, newest first. A reduced branch
+     type can itself be Glue: the newest record for T is the outermost
+     Glue that reduced to T, and it takes priority over the Glue metadata
+     of T. A nested glue_at adds records but does not remove them. */
+  for (rec = m->glue_recs; rec != NULL && rec != h0; rec = rec->next)
+    if (rec->out == t && rec->raw != NULL)
+      return rec->raw;
   if (val_is(t, OP_GLUE) && t->argc == 3u)
     return t;
   return internal(m, "a line that changes its type former");
@@ -1870,13 +1972,50 @@ static const Value *glue_branch_at(Machine *m, const Value *line, const Value *k
   return internal(m, "a Glue branch that changes its face");
 }
 
-/* fiber T A f y of the domain library. */
-static const Value *fiber_type(Machine *m, const Value *t, const Value *a, const Value *f, const Value *y) {
+/* The value of the domain library def NAME (the global lookup of R3 (a)). */
+static const Value *domain_def(Machine *m, const char *name) {
   uint32_t i;
   for (i = 0; i < m->def_count; i++)
-    if (m->defs[i].name != NULL && strcmp(m->defs[i].name, "fiber") == 0)
-      return apply_value(m, apply_value(m, apply_value(m, apply_value(m, def_value(m, i), t), a), f), y);
-  return internal(m, "a transport at Glue with no fiber definition");
+    if (m->defs[i].name != NULL && strcmp(m->defs[i].name, name) == 0)
+      return def_value(m, i);
+  return internal(m, "a Kan rule that needs a domain library def that is not there");
+}
+
+/* fiber T A f y of the domain library. */
+static const Value *fiber_type(Machine *m, const Value *t, const Value *a, const Value *f, const Value *y) {
+  return apply_value(m, apply_value(m, apply_value(m, apply_value(m, domain_def(m, "fiber"), t), a), f), y);
+}
+
+/* hcomp in the universe (S3c item 12, CCHM): hcomp (Type 0) psi [k -> A j]
+   A0 = Glue A0 psi [k -> pack (A i1) e], with e = lineToEquiv (fun j => A
+   (~j)) = transp (fun j => Equiv (A i1) (A (~j))) i0 (idEquiv (A i1)). A
+   key that is i0 has no branch. */
+static const Value *hcomp_univ(Machine *m, const Value *phi, const Value *sys, const Value *base) {
+  const Value **sg;
+  const Value *t1;
+  const Value *e;
+  const Value *ga[3];
+  uint32_t k;
+  uint32_t n = 0;
+  sg = arena_alloc(m->arena, ((size_t)sys->argc + 1u) * sizeof *sg);
+  if (sg == NULL)
+    return oom(m);
+  for (k = 0; k + 1u < sys->argc; k += 2u)
+    if (!ival_is_end(face_norm(m, sys->args[k]), 0)) {
+      t1 = closure_apply(m, sys->args[k + 1u], val_iend(m, 1));
+      e = t1 == NULL ? NULL : transp(m, kan_closure(m, VAL_PLAM, CLOS_EQUIV_LINE, 0, 2, sys->args[k + 1u], t1, NULL), val_iend(m, 0), apply_value(m, domain_def(m, "idEquiv"), t1));
+      sg[n] = sys->args[k];
+      sg[n + 1u] = e == NULL ? NULL : constant_line(m, make(m, VAL_OP, OP_PACK, 0, 2, t1, e, NULL));
+      if (sg[n + 1u] == NULL)
+        return NULL;
+      n += 2u;
+    }
+  ga[0] = base;
+  ga[1] = phi;
+  ga[2] = system_value(m, sg, n);
+  if (ga[2] == NULL)
+    return NULL;
+  return reduce_glue(m, ga, 3);
 }
 
 /* transp L psi u0 with L(i) = Glue (A i) (phi i) sys(i). Branch k has the
@@ -2197,6 +2336,22 @@ static int conv_pair(Machine *m, uint32_t level, const Value *pair, const Value 
       && conv_values(m, level, pair->args[1], make(m, VAL_STUCK, second, 0, 1, neutral, NULL, NULL));
 }
 
+/* Equal branches may cover a face in a different order or subdivision. */
+static int conv_system(Machine *m, uint32_t level, const Value *a, const Value *b) {
+  const Value *cover;
+  uint32_t i;
+  uint32_t j;
+  for (i = 0; i + 1u < a->argc; i += 2u) {
+    cover = val_iend(m, 0);
+    for (j = 0; j + 1u < b->argc; j += 2u)
+      if (conv_values(m, level, a->args[i + 1u], b->args[j + 1u]))
+        cover = face_join(m, cover, b->args[j]);
+    if (!face_implies(m, a->args[i], cover))
+      return 0;
+  }
+  return 1;
+}
+
 /* The last argument of an operation is compared in the loop, so a long
    list does not nest. */
 static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b) {
@@ -2238,6 +2393,8 @@ static int conv_loop(Machine *m, uint32_t level, const Value *a, const Value *b)
       break;
     case VAL_OP:
     case VAL_STUCK:
+      if (val_is(a, OP_SYSTEM) && val_is(b, OP_SYSTEM))
+        return conv_system(m, level, a, b) && conv_system(m, level, b, a);
       if (!same_head(a, b))
         return 0;
       if (a->argc == 0)

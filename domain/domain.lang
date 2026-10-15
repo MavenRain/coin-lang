@@ -90,3 +90,12 @@ def isoToEquiv : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) ->
 def ua : (A : Type 0) -> (B : Type 0) -> (e : Equiv A B) -> Path (Type 0) A B :=
   fun (A : Type 0) => fun (B : Type 0) => fun (e : Equiv A B) =>
     fun (i : I) => Glue B (~i \/ i) (fun (_ : I) => [ ~i -> pack A e, i -> pack B (idEquiv B) ])
+-- uaArrow (S3c): agda/cubical ua-> with a constant C. A path h a from
+-- f0 a to f1 (witness e a) for each a gives a path of functions over ua e
+-- from f0 to f1. At i0 the hcomp is its ~i tube at j = i1, h a @ i0 =
+-- f0 a; at i1 it is its i tube, f1 a. The base is f1 (unglue a).
+def uaArrow : (A : Type 0) -> (B : Type 0) -> (C : Type 0) -> (e : Equiv A B) -> (f0 : A -> C) -> (f1 : B -> C) ->
+  (h : (a : A) -> Path C (f0 a) (f1 (witness e a))) -> PathP (fun (i : I) => (ua A B e @ i) -> C) f0 f1 :=
+  fun (A : Type 0) => fun (B : Type 0) => fun (C : Type 0) => fun (e : Equiv A B) => fun (f0 : A -> C) => fun (f1 : B -> C) =>
+  fun (h : (a : A) -> Path C (f0 a) (f1 (witness e a))) =>
+    fun (i : I) => fun (a : ua A B e @ i) => hcomp C (~i \/ i) (fun (j : I) => [ ~i -> h a @ ~j, i -> f1 a ]) (f1 (unglue a))

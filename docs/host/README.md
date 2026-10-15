@@ -71,7 +71,7 @@ starts again for each instance.
 | `List A` | An array |
 | `Sigma (x : A) B` | `{"witness": w, "payload": p}`. The payload type is `B` at the witness. |
 | `PathP (fun i => A) a b`, a body without `i` | `{"refl": a}` (rule 5). A point of a Pi type or a universe is its printed term, as a string. `Path A a b` is `PathP (fun _ => A) a b`. |
-| `PathP (fun _ => Type 0) A B`, with `A` = `Fin n` and a literal `n` | `{"from": "A", "to": "B", "transport": [t0, ...]}` (rule 1, before rules 5 and 6). `tk` is the value in `B` of `transp (fun i => p @ i) i0 k`, for each `k` below `n`. For a `ua` line, for example `ua (Fin 3) (Fin 3) e`, the table is `witness e` at each `k`. When a table value does not compute to a number or a canonical value, rules 5 and 6 apply. |
+| `PathP (fun _ => Type 0) A B`, with `A` = `Fin n` and a literal `n` | `{"from": "A", "to": "B", "transport": [t0, ...]}` (rule 1, before rules 5 and 6). `tk` is the value in `B` of `transp (fun i => p @ i) i0 k`, for each `k` below `n`. For a `ua` line, for example `ua (Fin 3) (Fin 3) e`, the table is `witness e` at each `k`. For a line made by `hcomp` in `Type 0`, the table is the composite transport: `transTwoLoops` in `examples/univ.lang`, two `loopRot1` lines, gives `[2, 0, 1]`. When a table value does not compute to a number or a canonical value, rules 5 and 6 apply. |
 | `Glue A phi sys`, with no true key | Refused (`JSON_VALUE`): a Glue element has no JSON form. A Glue type with a true key is its branch type `T`. |
 | `PathP (fun i => A) a b`, a body with `i` | `{"from": a, "to": b, "term": t}` (rule 6). `t` is the printed path term, as a string. A `transp` that does not compute stays in `t` as `transp (fun j => A) phi a`. An `hcomp` that does not compute stays in `t` as `hcomp A phi (fun i => [ k -> u, ... ]) u0`. |
 | A family whose constructors have no fields | The constructor name, as a string |
@@ -108,10 +108,18 @@ prints normally.
 | `glue` | `glue (fun (_ : I) => [ k0 -> t0, ... ]) a`, in check mode against a Glue type | A true key gives its branch `t`. Else `glue` is canonical. |
 | `unglue` | `unglue g`, with `g` of a Glue type `Glue A phi sys` | A term of `A`. `unglue (glue sys a)` is `a`. A true key gives `witness e g`. Else `unglue` is stuck. |
 | `ua` | `ua A B e : Path (Type 0) A B`, a def in `domain/domain.lang` | `fun (i : I) => Glue B (~i \/ i) (fun (_ : I) => [ ~i -> pack A e, i -> pack B (idEquiv B) ])`. Transport along `ua A B e` at a closed value `a` gives `witness e a` (uaβ). |
+| `hcomp` at Glue | `hcomp (Glue A phi sys) psi (fun (j : I) => [ k -> u, ... ]) u0` | A `glue` with the branch `hcomp T psi u u0` for each key of `phi`. The base is an `hcomp` in `A` of `unglue` of the tube and `unglue u0`; at each key of `phi`, its system adds `witness e` of the filler in `T`. |
+| `hcomp` in `Type 0` | `hcomp (Type 0) psi (fun (j : I) => [ k -> A, ... ]) A0` | `Glue A0 psi (fun (_ : I) => [ k -> pack (A at i1) e, ... ])`. `e` is the transport of `idEquiv` along the reversed line of `A` (`lineToEquiv`). A key that is `i0` gives no branch. Only this direct form reduces: where a Pi, Sigma, PathP or data rule reaches `Type 0`, the outer operation stays stuck. The base must be the branch at `i0` (`HCOMP_CAP`). |
+| `uaArrow` | `uaArrow A B C e f0 f1 h : PathP (fun (i : I) => (ua A B e @ i) -> C) f0 f1`, with `h : (a : A) -> Path C (f0 a) (f1 (witness e a))`, a def in `domain/domain.lang` | `fun i a => hcomp C (~i \/ i) (fun (j : I) => [ ~i -> h a @ ~j, i -> f1 a ]) (f1 (unglue a))`, the agda/cubical `ua→` with a constant `C`. At `i0` it gives `f0 a`, and at `i1` it gives `f1 a`. |
+
+`hcomp` at `Type 1` or higher is refused with `HCOMP_UNIVERSE`: the Glue
+type and equivalence library are restricted to `Type 0`.
 
 `transp` along a Glue line gives a `glue` at `i1`. Each branch comes from
 the fiber extension of its equivalence, and an `hcomp` in `A` at `i1`
-gives the base. `langc check` gives these codes for Glue:
+gives the base. `examples/univ.lang` has an `hcomp` in `Type 0`
+(`transTwoLoops`), an `hcomp` at Glue (`hcompGlue`) and a `uaArrow`
+instance (`uaArrowPlus3`). `langc check` gives these codes for Glue:
 
 | Code | Cause |
 |---|---|
@@ -126,11 +134,14 @@ gives the base. `langc check` gives these codes for Glue:
 `domain/domain.lang` is the sample domain. `gen/embed.c` embeds it in the
 executable at build time. `domain/README.md` tells how to replace it.
 It holds the equivalence library: `isContr`, `fiber`, `isEquiv`, `Equiv`,
-`idEquiv` and `isoToEquiv`, and the univalence def `ua` (see Glue). An
-`Equiv` value holds a function, so a
+`idEquiv` and `isoToEquiv`, and the univalence defs `ua` and `uaArrow`
+(see Glue). An `Equiv` value holds a function, so a
 program def of an `Equiv` type is refused by `langc build`
 (`JSON_VALUE`). Write the equivalence inline in a data def, or under a Pi
-type.
+type. A program def whose type holds a Glue type, for example a path
+over `loopRot1 @ j` or over `ua A B e @ i`, is refused by `langc build`
+too (`JSON_TYPE`: the type has no source syntax). Write it under a Pi
+type: a `Fin n` binder lets finAll check each closed case.
 
 ## Limits
 

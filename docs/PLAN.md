@@ -95,7 +95,11 @@ S1 closed both:
   `Glue`, `glue` and `unglue` are builtins with the face, `unglue` and
   `transp` rules, `ua` is a library def, transport along `ua e` at a closed
   value gives `witness e` of that value (uaβ), and the JSON writer prints a
-  path in the universe from `Fin n` as its transport table (rule 1).
+  path in the universe from `Fin n` as its transport table (rule 1). S3c:
+  `hcomp` at a Glue type and `hcomp` in `Type 0` reduce, `hcomp` in `Type
+  0` gives a Glue type whose branches hold the equivalences of the
+  reversed lines (`lineToEquiv`), and `uaArrow` is a library def. S3 is
+  done.
 
 ## 4. The cubical kernel
 

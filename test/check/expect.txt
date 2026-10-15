@@ -38,7 +38,8 @@ j-refl-conv.lang PATH_END
 system-cover.lang SYSTEM_COVER
 system-overlap.lang SYSTEM_OVERLAP
 hcomp-cap.lang HCOMP_CAP
-hcomp-universe.lang HCOMP_UNIVERSE
+hcomp-universe-cap.lang HCOMP_CAP
+hcomp-higher-universe.lang HCOMP_UNIVERSE
 trans-unit.lang PATH_UIP
 fin-range.lang FIN_RANGE
 fin-all-case.lang FIN_CASE

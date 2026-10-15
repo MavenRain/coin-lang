@@ -12,6 +12,79 @@ static int checked(Arena *arena, Machine *m, Diag *diag, const char *source) {
       && check_program(arena, &decls, m, diag);
 }
 
+static int accepts(const char *label, const char *source) {
+  Arena arena;
+  Machine m;
+  Diag diag;
+  int ok;
+  arena_init(&arena, (size_t)128 << 20);
+  ok = checked(&arena, &m, &diag, source);
+  if (!ok) {
+    fprintf(stderr, "FAIL %s\n", label);
+    diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return ok;
+}
+
+static int system_conversion(void) {
+  Arena arena;
+  Machine m;
+  Diag diag;
+  Value lines[2] = {{0}, {0}};
+  Value negative;
+  IConj conjunction;
+  uint32_t negative_lit = 1;
+  const Value *points[2];
+  const Value *args[6];
+  const Value *i;
+  const Value *ni;
+  const Value *original;
+  const Value *other;
+  int ok;
+  uint32_t k;
+  arena_init(&arena, (size_t)128 << 20);
+  ok = checked(&arena, &m, &diag, "def seed : Nat := 0\n");
+  if (ok) {
+    for (k = 0; k < 2u; k++) {
+      points[k] = val_nat(&m, k);
+      lines[k].kind = VAL_PLAM;
+      lines[k].tag = CLOS_CONST;
+      lines[k].args = &points[k];
+      lines[k].argc = 1;
+    }
+    i = val_ivar(&m, 0);
+    negative = *i;
+    conjunction.lits = &negative_lit;
+    conjunction.count = 1;
+    negative.conj = &conjunction;
+    ni = &negative;
+    args[0] = i; args[1] = &lines[0];
+    args[2] = ni; args[3] = &lines[1];
+    original = val_op(&m, VAL_OP, OP_SYSTEM, 0, 0, args, 4);
+    args[0] = ni; args[1] = &lines[1];
+    args[2] = i; args[3] = &lines[0];
+    other = val_op(&m, VAL_OP, OP_SYSTEM, 0, 0, args, 4);
+    ok = conv_values(&m, 2, original, other);
+    args[1] = &lines[0]; args[3] = &lines[1];
+    other = val_op(&m, VAL_OP, OP_SYSTEM, 0, 0, args, 4);
+    ok = ok && !conv_values(&m, 2, original, other);
+    args[0] = i; args[1] = &lines[0];
+    other = val_op(&m, VAL_OP, OP_SYSTEM, 0, 0, args, 2);
+    ok = ok && !conv_values(&m, 2, original, other);
+    args[2] = ni; args[3] = &lines[1];
+    args[4] = face_meet(&m, i, val_ivar(&m, 1)); args[5] = &lines[0];
+    other = val_op(&m, VAL_OP, OP_SYSTEM, 0, 0, args, 6);
+    ok = ok && conv_values(&m, 2, original, other) && !diag.set;
+  }
+  if (!ok) {
+    fprintf(stderr, "FAIL system conversion: order, values, coverage or refinement\n");
+    if (diag.set) diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return ok;
+}
+
 static int roundtrip(const char *label, const char *source) {
   Arena arena;
   Machine m, replay;
@@ -81,6 +154,21 @@ static int json_contains(const char *label, const char *source, const char *expe
 
 int main(void) {
   int failed = 0;
+  failed += !system_conversion();
+  failed += !accepts("Glue composition with reordered faces",
+    "def G : Path (Type 0) (Fin 3) (Fin 3) := fun (j : I) => Glue (Fin 3) (~j \\/ j) (fun (_ : I) => [ ~j -> pack (Fin 3) (idEquiv (Fin 3)), j -> pack (Fin 3) (idEquiv (Fin 3)) ])\n"
+    "def g : PathP (fun (j : I) => G @ j) 0 0 := fun (j : I) => glue (fun (_ : I) => [ ~j \\/ j -> 0 ]) 0\n"
+    "def same : PathP (fun (j : I) => Path (G @ j) (hcomp (G @ j) (~j \\/ j) (fun (_ : I) => [ ~j -> g @ j, j -> g @ j ]) (g @ j)) (g @ j)) refl refl := fun (j : I) => refl\n");
+  failed += !accepts("Glue composition under a stronger face",
+    "def G0 : Path (Type 0) (Fin 3) (Fin 3) := fun (j : I) => Glue (Fin 3) (~j \\/ j) (fun (_ : I) => [ ~j -> pack (Fin 3) (idEquiv (Fin 3)), j -> pack (Fin 3) (idEquiv (Fin 3)) ])\n"
+    "def g0 : PathP (fun (j : I) => G0 @ j) 0 0 := fun (j : I) => glue (fun (_ : I) => [ ~j \\/ j -> 0 ]) 0\n"
+    "def G1 : Path (Type 0) (Fin 3) (Fin 3) := fun (j : I) => Glue (Fin 3) (~j \\/ j) (fun (_ : I) => [ ~j -> pack (Fin 3) (idEquiv (Fin 3)), j -> pack (Fin 3) (idEquiv (Fin 3)), ~j -> pack (Fin 3) (idEquiv (Fin 3)) ])\n"
+    "def g1 : PathP (fun (j : I) => G1 @ j) 0 0 := fun (j : I) => glue (fun (_ : I) => [ ~j \\/ j -> 0 ]) 0\n"
+    "def G : Path (Path (Type 0) (Fin 3) (Fin 3)) G0 G1 := fun (i : I) => fun (j : I) => Glue (Fin 3) (~j \\/ j) (fun (_ : I) => [ ~j -> pack (Fin 3) (idEquiv (Fin 3)), j -> pack (Fin 3) (idEquiv (Fin 3)), ~j /\\ i -> pack (Fin 3) (idEquiv (Fin 3)) ])\n"
+    "def g : PathP (fun (i : I) => PathP (fun (j : I) => G @ i @ j) 0 0) g0 g1 := fun (i : I) => fun (j : I) => glue (fun (_ : I) => [ ~j \\/ j -> 0 ]) 0\n"
+    "def same0 : PathP (fun (j : I) => Path (G0 @ j) (hcomp (G0 @ j) (~j \\/ j) (fun (_ : I) => [ ~j -> g0 @ j, j -> g0 @ j ]) (g0 @ j)) (g0 @ j)) refl refl := fun (j : I) => refl\n"
+    "def same1 : PathP (fun (j : I) => Path (G1 @ j) (hcomp (G1 @ j) (~j \\/ j) (fun (_ : I) => [ ~j -> g1 @ j, j -> g1 @ j ]) (g1 @ j)) (g1 @ j)) refl refl := fun (j : I) => refl\n"
+    "def same : PathP (fun (i : I) => PathP (fun (j : I) => Path (G @ i @ j) (hcomp (G @ i @ j) (~j \\/ j) (fun (_ : I) => [ ~j -> g @ i @ j, j -> g @ i @ j ]) (g @ i @ j)) (g @ i @ j)) refl refl) same0 same1 := fun (i : I) => fun (j : I) => refl\n");
   failed += !roundtrip("PathP binder capture",
     "def original : Sigma (PathP : Nat) (Path Nat PathP PathP) := pack 0 refl\n");
   failed += !roundtrip("anonymous funExt argument",

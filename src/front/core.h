@@ -172,7 +172,11 @@ typedef enum {
   CLOS_GLUE_T,         /* PLAM: j |-> T(r /\ j) of the branch KEYF; args: L, keyf, r */
   CLOS_GLUE_FILL,      /* PLAM: r |-> witness (e r) (transpFill T psi u0 r); args: L, keyf, psi, u0 */
   CLOS_CONTR_AT,       /* PLAM: j |-> c x @ j, c a contraction; args: c, x, center */
-  CLOS_PATH_REV        /* PLAM: j |-> w @ ~j; args: w, a, b (the ends of w) */
+  CLOS_PATH_REV,       /* PLAM: j |-> w @ ~j; args: w, a, b (the ends of w) */
+  CLOS_SYS_UNGLUE,     /* PLAM: j |-> unglue (b j) at the Glue type G; args: b, G */
+  CLOS_GLUE_HFILL,     /* PLAM: j |-> witness e (hfill T psi u u0 j); args: pack T e, psi, u, u0 */
+  CLOS_SYS_RESTRICT,   /* PLAM: j |-> b j restricted to the Glue key K; args: b, K */
+  CLOS_EQUIV_LINE      /* PLAM: j |-> Equiv T (b (~j)) (hcomp in U); args: b, T */
 } ClosTag;
 
 typedef struct Value Value;
@@ -256,11 +260,18 @@ typedef struct {
   uint64_t fuel;
   int overflowed;
   uint32_t fresh; /* the count of fresh levels for the Kan head test */
-  /* The result and the OP_GLUE value of the last Glue that a true key
-     reduced. transp at Glue reads them to get A, phi and sys at an end. */
-  const Value *glue_out;
-  const Value *glue_raw;
+  /* Each Glue that a true key reduced, newest first. transp at Glue reads
+     them to get A, phi and sys at an end. */
+  const struct GlueRec *glue_recs;
 } Machine;
+
+/* One Glue that a true key reduced. OUT is the result, a fresh copy of the
+   branch type T, so that its pointer is unique. RAW is the OP_GLUE value. */
+typedef struct GlueRec {
+  const Value *out;
+  const Value *raw;
+  const struct GlueRec *next;
+} GlueRec;
 
 /* Each function returns NULL (or 0) after a diagnostic. A NULL input gives a
    NULL result, so a caller can test once at the end. */
