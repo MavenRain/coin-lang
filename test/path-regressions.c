@@ -40,6 +40,25 @@ static int roundtrip(const char *label, const char *source) {
   return ok;
 }
 
+static int print_refused(const char *label, const char *source) {
+  Arena arena;
+  Machine m;
+  Diag diag;
+  char value[8192];
+  int ok;
+  arena_init(&arena, (size_t)128 << 20);
+  ok = checked(&arena, &m, &diag, source);
+  if (ok)
+    ok = !value_print(&m, NULL, 0, def_value(&m, m.def_count - 1u), value, sizeof value)
+      && !diag.set;
+  if (!ok) {
+    fprintf(stderr, "FAIL %s: an internal finite case has no surface syntax\n", label);
+    if (diag.set) diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return ok;
+}
+
 int main(void) {
   int failed = 0;
   failed += !roundtrip("PathP binder capture",
@@ -78,6 +97,13 @@ int main(void) {
     "def original : (P : Path (Type 0) Nat Nat) -> PathP (fun (j : I) => (n : P @ j) -> P @ j) (fun (n : Nat) => n) (fun (n : Nat) => n) := fun P => fun (j : I) => fun (n : P @ j) => hcomp (P @ j) (~j \\/ j) (fun (i : I) => [ ~j -> n, j -> n ]) n\n");
   failed += !roundtrip("a branch on a disjunctive face",
     "def original : (p : Path Nat 0 1) -> PathP (fun (j : I) => Path Nat (p @ j) (p @ j)) refl refl := fun p => fun (j : I) => hcomp (Path Nat (p @ j) (p @ j)) (~j \\/ j) (fun (i : I) => [ ~j \\/ j -> refl ]) refl\n");
+  failed += !roundtrip("stuck Fin addition",
+    "def original : (r : Fin 11) -> Fin 11 := fun (r : Fin 11) => finAdd 11 r 3\n");
+  failed += !print_refused("finite case function printing",
+    "def original : (k : Fin 2) -> Path (Fin 2) (finAdd 2 k 0) k := fun k => refl\n");
+  failed += !print_refused("finite case path printing",
+    "def p : (k : Fin 2) -> Path (Fin 2) (finAdd 2 k 0) k := fun k => refl\n"
+    "def original : Path (Fin 2 -> Fin 2) (fun k => finAdd 2 k 0) (fun k => k) := funExt p\n");
   printf("path regressions: %d failed\n", failed);
   return failed != 0;
 }

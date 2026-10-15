@@ -172,3 +172,91 @@ K10 is a consistent extension (a unit law of `trans` by conversion), as K3
 was in S2a. No accepted def can kill it. Only a refusal can: `trans-unit`
 must stay refused. K11 stops each example at `trans` before `faceView`
 in `kan.lang` is checked.
+
+## S3a
+
+S3a (the Fin core and the equivalence library) is complete. The build has
+the builtin type `Fin n`. A literal `k` checks against `Fin n` only when
+`k` is below `n` (else `FIN_RANGE`). The builtins `finAdd n a b` and
+`finNeg n a` compute mod `n` on literals and stay stuck on a neutral.
+`transp` along a constant `Fin n` line gives the base, as for `Nat`. A
+lambda on a `Fin n` domain with a literal `n` checks as usual first. When
+that check fails, the checker checks the body once for each value `0` to
+`n - 1` (finAll) and makes a case term (`OP_FIN_CASE`)
+with one body for each value. A case that fails gives `FIN_CASE` with the
+case number and the inner refusal. A case term on a literal evaluates only
+the body of that literal; on a neutral it is stuck. `finCase` has no
+surface form, so the source printer refuses a stuck case instead of
+emitting an unknown name. `eval` gives `EVAL_PRINT`, and `build` gives
+`JSON_TYPE` without output when a type, path or point needs such a case.
+Closed cases that compute print normally. `domain/domain.lang` adds the equivalence library in the CTT
+form: `isContr`, `fiber`, `isEquiv`, `Equiv` (a Sigma of a function and
+contractible fibers), `idEquiv` and `isoToEquiv`. Glue and `ua` are S3b.
+
+Gate: `make check` is GREEN at examples 13, parse 11, check 45, evals 32,
+json 13, build refusals 4, regressions 6, printer 2, path regressions 21
+(0 failed). The clang `-Wswitch-enum` pass is clean. The dash scan is
+clean.
+
+Tests: `examples/equiv.lang` (`finWrap`, `finNegOne`, `finTransp`,
+`finTrans`, `idEquivFin3`, `plus3`, `minus3`, `plus3At9`, `addMod`, `rot`,
+`rot2`) and `test/json/equiv.json`; the check refusals `fin-range`
+(`FIN_RANGE`), `fin-all-case` and `fin-case-stuck` (both `FIN_CASE`); the
+evals `equiv addMod` and `equiv rot2`; the C round-trip case `stuck Fin
+addition` in `test/path-regressions.c`. In `plus3At9`, the section and the
+retraction of `isoToEquiv` are `fun (k : Fin 11) => refl` by finAll, and
+the equivalence is inline. Two C printer refusals cover an internal case
+in a function and in a path. `test/emit/fin-case-type.lang` and
+`fin-case-term.lang` require `JSON_TYPE` with no output, for a type and a
+path term respectively.
+
+Deviations from the plan (kickoff section 2):
+
+- The C case. The plan was a def with a stuck `OP_FIN_CASE` that
+  round-trips. It cannot pass: `finCase` has no surface form, so the
+  printer refuses the core. The C case is `stuck Fin addition`
+  (`fun (r : Fin 11) => finAdd 11 r 3`), and mutant G6 gets the new check
+  refusal `fin-case-stuck`. So check is 45, not 44. A surface `finCase` is
+  a design decision, not a test change, and S3a does not add it.
+- The evals. An eval entry is a first-order `Nat` or `Flag` def, so `rot 2`
+  gives `EVAL_ARGS`. The closed def `rot2 : Fin 3 := rot 2` replaces it
+  (`equiv rot2 => 0`). The planned eval `equiv finAdd` uses the def
+  `addMod`, because `finAdd` is a core name (`REFUSE_NAME`).
+- `fin-case-stuck`, first form. It did not kill G6: each case body referred
+  to `k` (`pack k refl`), so body 0 at a neutral `k` gave the witness `k`,
+  which is also stuck. The second form proves `p : (k : Fin 2) -> Path (Fin
+  2) (finAdd 2 k 0) k` by finAll, with the end value in each case body, and
+  `bad` states that `(p k) @ i1` is `0` at a neutral `k`. The clean build
+  refuses it: `FIN_CASE`, case 1, `PATH_END: the path at i1 is 1, but the
+  type needs 0`.
+
+Helper defs: `isoCap` and `isoPath` are the agda/cubical fill squares
+`fill0` and `fill2` at `k = i1`. Each is written in the general fill form,
+so its value is the value of the general fill. `isoToEquiv` writes the
+other squares inline, and each face key is one literal (no face holds a
+compound formula).
+
+Choices:
+
+- `Fin 0` has no finAll fallback. An empty case term would accept a body
+  that is not checked, so the first refusal stays.
+- finAll has no size limit other than the `uint32_t` arity (`n` below
+  2^32 - 1) and the arena. `Fin 4000000000` gives `OOM`.
+
+Mutants: one at a time, `make -B` for each build. Each file was restored and
+its `shasum` was confirmed. Each kill came from a test, not from a compile
+error.
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| G1 | Fin literal: no `k < n` test | `fin-range` (accepted) |
+| G2 | `finAdd`: no `mod n` | `equiv.lang` (`finWrap`: `PATH_END`, 12, not 1), `equiv addMod`, `equiv rot2`, `equiv.json` |
+| G3 | `finNeg`: gives `a` | `equiv.lang` (`finNegOne`: `PATH_END`, 1, not 2), `equiv addMod`, `equiv rot2`, `equiv.json` |
+| G4 | finAll: checks only the case `j = 0` | `fin-all-case`, `fin-case-stuck` (both accepted) |
+| G5 | `transp_data` OP_FIN: stuck, as OP_FAMILY | `equiv.lang` (`finTransp`: `PATH_END`, the `transp` stays), `equiv addMod`, `equiv rot2`, `equiv.json` |
+| G6 | OP_FIN_CASE: a neutral `k` gives body 0 | `fin-case-stuck` (accepted) |
+
+G5 keeps the `case OP_FIN:` label and stops in it: a deleted label is a
+`-Wswitch-enum` compile error. G6 is a consistent extension, as K3 in S2a
+and K10 in S2b. No accepted def can kill it. Only a refusal can:
+`fin-case-stuck` must stay refused.

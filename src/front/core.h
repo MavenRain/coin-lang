@@ -62,7 +62,11 @@ typedef enum {
   OP_INTERVAL, /* the sort I: never a type, only the type of an interval term */
   OP_TRANSP,   /* transp L phi a: L a line (a path value in U), phi a face */
   OP_SYSTEM,   /* a system: key0, branch0, key1, branch1, ...; each branch a PLAM */
-  OP_HCOMP     /* hcomp A phi sys u0: phi a face, sys an OP_SYSTEM value */
+  OP_HCOMP,    /* hcomp A phi sys u0: phi a face, sys an OP_SYSTEM value */
+  OP_FIN,      /* Fin n: the numbers below n; a value is a VAL_NAT literal */
+  OP_FIN_ADD,  /* finAdd n a b: (a + b) mod n */
+  OP_FIN_NEG,  /* finNeg n a: (n - a) mod n */
+  OP_FIN_CASE  /* finAll case: k, body0, ..., body(n-1); body j at the literal j */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */

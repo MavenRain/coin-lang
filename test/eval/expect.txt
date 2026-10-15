@@ -28,3 +28,5 @@ functions applied => 36
 kan evPi => 5
 kan evPair => 3
 kan evTrans => 3
+equiv addMod => 1
+equiv rot2 => 0

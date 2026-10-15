@@ -88,7 +88,11 @@ S1 closed both:
   are library defs in `domain/domain.lang`. S2b: `hcomp A phi (fun (i :
   I) => [ k -> t, ... ]) u0` is a builtin with rules for a true face, Pi,
   Sigma, PathP and the data formers, and `transp` has the PathP rule.
-  `trans` is a library def by `hcomp`. S2 is done.
+  `trans` is a library def by `hcomp`. S2 is done. S3a: `Fin n`, `finAdd`
+  and `finNeg` are builtins, a lambda on a `Fin n` domain with a literal
+  `n` checks one case for each value (finAll), and `isContr`, `fiber`,
+  `isEquiv`, `Equiv`, `idEquiv` and `isoToEquiv` are library defs. Glue
+  and `ua` come in S3b.
 
 ## 4. The cubical kernel
 

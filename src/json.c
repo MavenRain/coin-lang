@@ -176,8 +176,9 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   char num[24];
   switch (type->op) {
   case OP_NAT:
+  case OP_FIN:
     if (v->kind != VAL_NAT)
-      return internal(o, "a Nat value that is not a number");
+      return internal(o, "a Nat or Fin value that is not a number");
     snprintf(num, sizeof num, "%llu", (unsigned long long)v->nat);
     return put_text(o, num);
   case OP_FLAG:
@@ -236,6 +237,9 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_NAT_LE:
   case OP_FLAG_IF:
   case OP_PROJ:
+  case OP_FIN_ADD:
+  case OP_FIN_NEG:
+  case OP_FIN_CASE:
     return internal(o, "a type that is not a type former");
   }
   return internal(o, "an unknown operation");
@@ -258,7 +262,7 @@ static int printed_json(Out *o, const Value *v) {
   if (text == NULL)
     return diag_fail(o->m->diag, "OOM", o->def, "the arena limit is reached");
   if (!value_print(o->m, NULL, 0, v, text, JSON_TYPE_MAX))
-    return diag_fail(o->m->diag, "JSON_TYPE", o->def, "a path or its point exceeds the printer limits");
+    return diag_fail(o->m->diag, "JSON_TYPE", o->def, "a path or its point cannot be printed as source syntax");
   return put_string(o, text);
 }
 
@@ -408,7 +412,7 @@ static int instance_json(Out *o, uint32_t index, char *type_text, int first) {
   if (v == NULL)
     return 0;
   if (!value_print(m, NULL, 0, d->type, type_text, JSON_TYPE_MAX))
-    return diag_fail(m->diag, "JSON_TYPE", d->name, "the instance type exceeds the printer limits");
+    return diag_fail(m->diag, "JSON_TYPE", d->name, "the instance type cannot be printed as source syntax");
   return (first || put_text(o, ",")) && put_text(o, "{\"name\":") && put_string(o, d->name)
     && put_text(o, ",\"type\":") && put_string(o, type_text) && put_text(o, ",\"value\":")
     && value_json(o, d->type, v) && put_text(o, "}");

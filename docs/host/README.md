@@ -62,6 +62,7 @@ starts again for each instance.
 | Type | JSON value |
 |---|---|
 | `Nat` | A number: the full unsigned 64-bit value in decimal |
+| `Fin n` | A number below `n`, in decimal |
 | `Flag` | `true` or `false` |
 | `Unit` | `{}` |
 | `Prod A B` | `{"first": a, "second": b}` |
@@ -84,7 +85,7 @@ example `Lot 3`), not in `value`.
 |---|---|
 | `JSON_VALUE` | An instance holds a function, a type or a stuck term |
 | `JSON_DEPTH` | An instance nests deeper than 2000 levels. A list spine does not count. |
-| `JSON_TYPE` | The complete instance type exceeds the printer's size or depth limit |
+| `JSON_TYPE` | An instance type, path or point exceeds the printer limits or contains an internal finite case with no source syntax |
 | `EVAL_OVERFLOW` | A Nat operation in an instance overflows |
 
 The check and evaluation codes are the same as in `langc check` and
@@ -92,12 +93,20 @@ The check and evaluation codes are the same as in `langc check` and
 for each refusal.
 
 `langc eval` also refuses an incomplete normal form with `EVAL_PRINT`
-(a 65536-byte buffer and the same printer depth limit).
+(a 65536-byte buffer and the same printer depth limit). A stuck finAll case
+has no source syntax, so `eval` refuses it with `EVAL_PRINT` and `build`
+refuses it with `JSON_TYPE`. A closed case that computes to a literal
+prints normally.
 
 ## The domain
 
 `domain/domain.lang` is the sample domain. `gen/embed.c` embeds it in the
 executable at build time. `domain/README.md` tells how to replace it.
+It holds the equivalence library: `isContr`, `fiber`, `isEquiv`, `Equiv`,
+`idEquiv` and `isoToEquiv`. An `Equiv` value holds a function, so a
+program def of an `Equiv` type is refused by `langc build`
+(`JSON_VALUE`). Write the equivalence inline in a data def, or under a Pi
+type.
 
 ## Limits
 
@@ -112,6 +121,7 @@ executable at build time. `domain/README.md` tells how to replace it.
 | JSON nesting | 2000 | `src/json.h:15` |
 | `type` text | 4096 bytes | `src/json.c:7` |
 | Type and normal-form printer depth | 200 | `src/front/eval.c` |
+| finAll cases (`Fin n`, a literal `n`) | `n` below 2^32 - 1; the arena stops a large `n` first | `src/front/check.c` (`fin_cases`) |
 
 ## Origin
 

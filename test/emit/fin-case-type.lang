@@ -1,0 +1,3 @@
+-- A path type whose points contain internal finite cases cannot be printed.
+def p : (k : Fin 2) -> Path (Fin 2) (finAdd 2 k 0) k := fun k => refl
+def law : Path ((k : Fin 2) -> Path (Fin 2) (finAdd 2 k 0) k) p p := refl

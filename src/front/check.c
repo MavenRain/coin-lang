@@ -71,7 +71,9 @@ typedef enum {
   RULE_TRANSP,
   RULE_HCOMP,
   RULE_NAT2,
-  RULE_FLAG_IF
+  RULE_FLAG_IF,
+  RULE_FIN,
+  RULE_FIN_OP
 } Rule;
 
 typedef struct {
@@ -91,6 +93,9 @@ static const Builtin BUILTINS[] = {
   {"Sum", 2, RULE_TYPE2, OP_SUM, OP_NAT, 0},
   {"Option", 1, RULE_TYPE1, OP_OPTION, OP_NAT, 0},
   {"List", 1, RULE_TYPE1, OP_LIST, OP_NAT, 0},
+  {"Fin", 1, RULE_FIN, OP_FIN, OP_NAT, 0},
+  {"finAdd", 3, RULE_FIN_OP, OP_FIN_ADD, OP_FIN, 0},
+  {"finNeg", 2, RULE_FIN_OP, OP_FIN_NEG, OP_FIN, 0},
   {"I", 0, RULE_INTERVAL, OP_INTERVAL, OP_NAT, 0},
   {"i0", 0, RULE_IEND, OP_INTERVAL, OP_INTERVAL, 0},
   {"i1", 0, RULE_IEND, OP_INTERVAL, OP_INTERVAL, 1},
@@ -1290,6 +1295,25 @@ static const Core *rule_nat2(Call *k) {
   return op3(c, k->b->op, 0, 2, x, y, NULL);
 }
 
+/* Fin n: n : Nat, Fin n : Type 0. */
+static const Core *rule_fin(Call *k) {
+  const Core *n = check(k->c, k->args[0], nat_type(k->c));
+  k->type = val_univ(k->c->m, 0);
+  return op3(k->c, OP_FIN, 0, 1, n, NULL, NULL);
+}
+
+/* finAdd n a b, finNeg n a: n : Nat, each other argument : Fin n, the
+   result : Fin n. */
+static const Core *rule_fin_op(Call *k) {
+  Checker *c = k->c;
+  const Core *n = check(c, k->args[0], nat_type(c));
+  const Value *fin = n == NULL ? NULL : tyop(c, OP_FIN, 1, here(c, n), NULL, NULL);
+  const Core *x = fin == NULL ? NULL : check(c, k->args[1], fin);
+  const Core *y = x == NULL || k->b->arity < 3u ? NULL : check(c, k->args[2], fin);
+  k->type = fin;
+  return op3(c, k->b->op, 0, k->b->arity, n, x, y);
+}
+
 /* flagIf b yes no */
 static const Core *rule_flag_if(Call *k) {
   Checker *c = k->c;
@@ -1368,6 +1392,10 @@ static const Core *rule(Call *k) {
     return rule_hcomp(k);
   case RULE_NAT2:
     return rule_nat2(k);
+  case RULE_FIN_OP:
+    return rule_fin_op(k);
+  case RULE_FIN:
+    return rule_fin(k);
   case RULE_FLAG_IF:
     return rule_flag_if(k);
   }
@@ -1686,18 +1714,63 @@ static const Core *infer_plam(Checker *c, const Term *t, const Value **type) {
   return core_bind(c, CORE_PLAM, t->name, NULL, body);
 }
 
+/* The literal bound of a Fin n domain, or 0 when there is no finAll: the
+   bound must leave room for the k argument in the uint32_t arity. */
+static uint64_t fin_cases(const Value *dom) {
+  if (!val_is(dom, OP_FIN) || dom->args[0]->kind != VAL_NAT || dom->args[0]->nat >= UINT32_MAX)
+    return 0;
+  return dom->args[0]->nat;
+}
+
+/* finAll (S3a): the body at each literal j below n, with the binder bound
+   to j. The core is OP_FIN_CASE (k, body0, ..., body(n-1)). */
+static const Core *check_fin_all(Checker *c, const Term *t, const Value *hint, uint64_t n) {
+  const Core **args = arena_alloc(c->m->arena, ((size_t)n + 1u) * sizeof *args);
+  char inner[sizeof c->m->diag->msg];
+  const char *code;
+  Diag clean = *c->m->diag;
+  uint64_t j;
+  if (args == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  args[0] = core_index(c, CORE_VAR, 0);
+  for (j = 0; j < n; j++) {
+    const Value *x = val_nat(c->m, j);
+    if (!push_value(c, t->name, hint->dom, x))
+      return NULL;
+    args[j + 1u] = check(c, t->right, closure_apply(c->m, hint, x));
+    pop(c);
+    if (args[j + 1u] == NULL) {
+      code = c->m->diag->code != NULL ? c->m->diag->code : "-";
+      if (strcmp(code, "OOM") == 0)
+        return NULL;
+      snprintf(inner, sizeof inner, "%s", c->m->diag->msg);
+      *c->m->diag = clean;
+      return nul(FAIL(c, "FIN_CASE", "the case %llu of Fin %llu fails: %s: %s", (unsigned long long)j, (unsigned long long)n, code, inner));
+    }
+  }
+  return core_op(c, OP_FIN_CASE, 0, 0, args, (uint32_t)n + 1u);
+}
+
 static const Core *check_lam(Checker *c, const Term *t, const Value *hint, const Value **type) {
   const Core *body;
+  Diag clean;
   if (hint->kind == VAL_PATHP)
     return check_plam(c, t, hint, type);
   if (hint->kind != VAL_PI)
     return nul(FAIL(c, "TYPE_MISMATCH", "a function is not a term of type %s", show(c, hint)));
   if (t->left != NULL && !annotation_ok(c, t->left, hint->dom))
     return NULL;
+  clean = *c->m->diag;
   if (!push(c, t->name, hint->dom))
     return NULL;
   body = check(c, t->right, closure_apply(c->m, hint, c->env->value));
   pop(c);
+  /* finAll: the ordinary check failed on a Fin n domain (literal n), so
+     check each case. The ordinary core stays when the ordinary check passes. */
+  if (body == NULL && fin_cases(hint->dom) > 0 && strcmp(c->m->diag->code != NULL ? c->m->diag->code : "-", "OOM") != 0) {
+    *c->m->diag = clean;
+    body = check_fin_all(c, t, hint, fin_cases(hint->dom));
+  }
   *type = hint;
   return core_bind(c, CORE_LAM, t->name, NULL, body);
 }
@@ -1765,6 +1838,12 @@ static const Core *elab_inner(Checker *c, const Term *t, const Value *hint, cons
   case TERM_APP:
     return elab_spine(c, t, hint, type);
   case TERM_NAT:
+    if (val_is(hint, OP_FIN) && hint->args[0]->kind == VAL_NAT) {
+      if (t->nat >= hint->args[0]->nat)
+        return nul(FAIL(c, "FIN_RANGE", "the literal %llu is not below %llu, so it is not a value of Fin %llu", (unsigned long long)t->nat, (unsigned long long)hint->args[0]->nat, (unsigned long long)hint->args[0]->nat));
+      *type = hint;
+      return core_leaf(c, CORE_NAT, t->nat);
+    }
     *type = nat_type(c);
     return finish(c, core_leaf(c, CORE_NAT, t->nat), hint, type);
   case TERM_LAM:
@@ -2081,7 +2160,7 @@ int eval_command(Machine *m, const char *name, char *const *args, int arg_count,
     if (buf == NULL)
       return diag_fail(m->diag, "OOM", name, "out of memory") + 1;
     if (!value_print(m, NULL, 0, v, buf, PRINT_MAX)) {
-      diag_fail(m->diag, "EVAL_PRINT", name, "the normal form exceeds the printer limits");
+      diag_fail(m->diag, "EVAL_PRINT", name, "the normal form cannot be printed as source syntax");
       return 1;
     }
     fprintf(out, "%s\n", buf);

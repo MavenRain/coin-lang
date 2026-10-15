@@ -36,3 +36,50 @@ def JRefl : (A : Type 0) -> (x : A) -> (P : (y : A) -> Path A x y -> Type 0) -> 
 def trans : (A : Type 0) -> (x : A) -> (y : A) -> (z : A) -> Path A x y -> Path A y z -> Path A x z :=
   fun (A : Type 0) => fun (x : A) => fun (y : A) => fun (z : A) => fun (p : Path A x y) => fun (q : Path A y z) =>
     fun (j : I) => hcomp A (~j \/ j) (fun (i : I) => [ ~j -> x, j -> q @ i ]) (p @ j)
+-- Equivalences (S3a, R3 (a)): contractible types, fibers, isEquiv and
+-- Equiv as Sigma types (the map, then for each y the center pack x p and
+-- the contraction), idEquiv, and isoToEquiv as in agda/cubical
+-- isoToIsEquiv. isoCap is the fill at k = i1; isoPath is the first part
+-- of the fiber path. The squares are inline, with j flipped.
+def isContr : (A : Type 0) -> Type 0 :=
+  fun (A : Type 0) => Sigma (c : A) ((x : A) -> Path A c x)
+def fiber : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (y : B) -> Type 0 :=
+  fun (A : Type 0) => fun (B : Type 0) => fun (f : A -> B) => fun (y : B) => Sigma (x : A) (Path B (f x) y)
+def isEquiv : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> Type 0 :=
+  fun (A : Type 0) => fun (B : Type 0) => fun (f : A -> B) => (y : B) -> isContr (fiber A B f y)
+def Equiv : (A : Type 0) -> (B : Type 0) -> Type 0 :=
+  fun (A : Type 0) => fun (B : Type 0) => Sigma (f : A -> B) (isEquiv A B f)
+def idEquiv : (A : Type 0) -> Equiv A A :=
+  fun (A : Type 0) => pack (fun (x : A) => x) (fun (y : A) =>
+    pack (pack y refl) (fun (z : fiber A A (fun (x : A) => x) y) =>
+      fun (i : I) => pack (payload z @ ~i) (fun (j : I) => payload z @ (~i \/ j))))
+def isoCap : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (t : (x : A) -> Path A (g (f x)) x) ->
+  (y : B) -> (x0 : A) -> (p0 : Path B (f x0) y) -> Path A (g y) x0 :=
+  fun (A : Type 0) => fun (B : Type 0) => fun (f : A -> B) => fun (g : B -> A) => fun (t : (x : A) -> Path A (g (f x)) x) =>
+  fun (y : B) => fun (x0 : A) => fun (p0 : Path B (f x0) y) =>
+    fun (i : I) => hcomp A (i \/ ~i \/ ~i1) (fun (m : I) => [ i -> t x0 @ (i1 /\ m), ~i -> g y, ~i1 -> g (p0 @ ~i) ]) (g (p0 @ ~i))
+def isoPath : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) -> (t : (x : A) -> Path A (g (f x)) x) ->
+  (y : B) -> (x0 : A) -> (p0 : Path B (f x0) y) -> (x1 : A) -> (p1 : Path B (f x1) y) -> Path A x0 x1 :=
+  fun (A : Type 0) => fun (B : Type 0) => fun (f : A -> B) => fun (g : B -> A) => fun (t : (x : A) -> Path A (g (f x)) x) =>
+  fun (y : B) => fun (x0 : A) => fun (p0 : Path B (f x0) y) => fun (x1 : A) => fun (p1 : Path B (f x1) y) =>
+    fun (i : I) => hcomp A (i \/ ~i \/ ~i1) (fun (m2 : I) => [ i -> isoCap A B f g t y x1 p1 @ (i1 /\ m2), ~i -> isoCap A B f g t y x0 p0 @ (i1 /\ m2), ~i1 -> g y ]) (g y)
+def isoToEquiv : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (g : B -> A) ->
+  (s : (y : B) -> Path B (f (g y)) y) -> (t : (x : A) -> Path A (g (f x)) x) -> Equiv A B :=
+  fun (A : Type 0) => fun (B : Type 0) => fun (f : A -> B) => fun (g : B -> A) =>
+  fun (s : (y : B) -> Path B (f (g y)) y) => fun (t : (x : A) -> Path A (g (f x)) x) =>
+  pack f (fun (y : B) => pack (pack (g y) (s y)) (fun (z : fiber A B f y) =>
+    fun (i : I) => pack (isoPath A B f g t y (g y) (s y) (witness z) (payload z) @ i) (fun (j : I) =>
+      hcomp B (i \/ ~i \/ ~j \/ j) (fun (m4 : I) => [
+        i -> s (payload z @ j) @ m4,
+        ~i -> s (s y @ j) @ m4,
+        ~j -> s (f (isoPath A B f g t y (g y) (s y) (witness z) (payload z) @ i)) @ m4,
+        j -> s y @ m4 ])
+      (f (hcomp A (i \/ ~i \/ ~j \/ j) (fun (m3 : I) => [
+        i -> hcomp A (~j \/ j \/ m3) (fun (m : I) => [ ~j -> t (witness z) @ (~m3 /\ m), j -> g y, m3 -> g (payload z @ j) ]) (g (payload z @ j)),
+        ~i -> hcomp A (~j \/ j \/ m3) (fun (m : I) => [ ~j -> t (g y) @ (~m3 /\ m), j -> g y, m3 -> g (s y @ j) ]) (g (s y @ j)),
+        ~j -> t (isoPath A B f g t y (g y) (s y) (witness z) (payload z) @ i) @ ~m3,
+        j -> g y ])
+        (hcomp A (i \/ ~i \/ j) (fun (m2 : I) => [
+          i -> isoCap A B f g t y (witness z) (payload z) @ (~j /\ m2),
+          ~i -> isoCap A B f g t y (g y) (s y) @ (~j /\ m2),
+          j -> g y ]) (g y)))))))

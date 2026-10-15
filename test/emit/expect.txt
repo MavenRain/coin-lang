@@ -1,2 +1,4 @@
 trap.lang EVAL_OVERFLOW
 function.lang JSON_VALUE
+fin-case-type.lang JSON_TYPE
+fin-case-term.lang JSON_TYPE
