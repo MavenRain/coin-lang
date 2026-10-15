@@ -2,7 +2,7 @@
      decl    := 'def' 'rec'? NAME ':' term ':=' term
               | 'axiom' NAME ':' term
               | 'family' NAME group* ':=' ctor ('|' ctor)*
-     ctor    := NAME group*
+     ctor    := NAME group* ('[' cells ']')?
      group   := '(' NAME+ ':' term ')'
      term    := 'fun' (NAME | group)+ '=>' term
               | group ('->' | '*') term
@@ -256,7 +256,8 @@ static const Term *parse_cells(Parser *p, const Token *tok) {
   return cell;
 }
 
-/* `[ k1 -> t1, ... ]`, only as the body of a `fun`. */
+/* `[ k1 -> t1, ... ]`, as the body of a `fun` or as the boundary of a
+   constructor. */
 static const Term *parse_system(Parser *p) {
   const Token *tok = cur(p);
   bump(p);
@@ -522,6 +523,8 @@ static int parse_family(Parser *p, Decl *d) {
     ctor->col = cur(p)->col;
     ctor->name = take_name(p, "a constructor name");
     if (ctor->name == NULL || !parse_fields(p, &ctor->fields, &ctor->field_count)) return 0;
+    ctor->boundary = at(p, TOK_LBRACKET) ? parse_system(p) : NULL;
+    if (ctor->boundary == NULL && p->diag->set) return 0;
   } while (eat(p, TOK_BAR));
   d->ctors = ctors;
   d->ctor_count = count;

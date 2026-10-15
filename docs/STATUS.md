@@ -500,3 +500,140 @@ composition and stronger Glue faces. They fail against the original
 staged evaluator and pass with the fixes. The check refusal
 `hcomp-higher-universe` covers the universe restriction. The full gate,
 including the clang pass, is green at the counts above.
+
+## S4a
+
+S4a (path constructor declarations, `S1`, `fold` with path cases, formal
+`hcomp`, `transp` at a family with no parameters, JSON rule 4) is
+complete. A domain constructor can take point fields, then 1 or 2
+interval fields, then a boundary system (R1 (a)). The checker checks each
+branch at the family type at the parameters (`hcomp_branch`), the cover
+(`SYSTEM_COVER`) and the overlaps (`SYSTEM_OVERLAP`); a path constructor
+with no boundary, more than 2 interval fields, or a point field after an
+interval field gives the new code `HIT_BOUNDARY`. `domain/domain.lang`
+declares `family S1 := base | loop (i : I) [ ~i -> base, i -> base ]`. A
+path constructor value is `OP_CTOR` (R2 (a)): `reduce_ctor` evaluates
+the boundary at the interval arguments, a true key gives its branch (`loop
+i0` is `base`), and else the value is canonical. `fold` takes one case for
+each constructor (R4 (a)). The case of a path constructor has the type
+`(fields) -> PathP (fun (_ : I) => RES) B0 B1`, with `B0` and `B1` the
+fold images of the boundary at `i0` and `i1`, and `fold (loop r)` is
+`case @ r` (`fold_path`). `hcomp` at a family with a path constructor
+(R3 (a)) is `hcomp_true` at a true key, and else the formal value `VAL_OP
+OP_HCOMP [ty, phi, sys, base]` (`hcomp_formal`), also at `i0` and with a
+neutral base. `fold` of a formal `hcomp` is `hcomp RES phi (fun (j : I)
+=> [ k -> fold u, ... ]) (fold u0)`, through the new closure
+`CLOS_SYS_FOLD`, and `reduce_proj` of it is stuck, not `INTERNAL`.
+`transp_data` gives the base at an `OP_FAMILY` with no parameters (the
+line is constant by the form of the family, not by regularity); a family
+with parameters stays stuck (S4b item 11). `conv_loop` does not convert a
+path constructor value with its boundary point, so `loop` is not `refl`.
+The JSON writer (R9 (a)) prints a path at a HIT whose body mentions the
+path variable as a tree (rule 4): `{"path": NAME, "args": [...]}` for a
+path constructor at the variable and `{"hcomp": {"phi": ..., "base":
+...}}` for a formal `hcomp`. `family_json` prints a formal `hcomp` in the
+same form.
+
+Gate: `make check` is GREEN at examples 16, parse 11, check 56, evals 37,
+json 16, build refusals 4, regressions 6, printer 2, path regressions 39
+(0 failed). The clang `-Wswitch-enum` pass is clean. The dash scan is
+clean.
+
+Tests: `examples/circle.lang` (`loopPath`, `transpBase`, `code2`, `loopT`,
+`loopAt0`, `code3`, `loop2`, `loop2T`, `loop2At0`) and
+`test/json/circle.json` (7 instances; `code2` and `code3` are functions
+into `Type 0` and do not emit). `code2` folds `S1` into `Type 0` with the
+cases `Fin 2` and `ua` of `r -> finAdd 2 r 1`, and `loopT` checks that the
+transport along `code2 (loop i)` moves `0` to `1` (`loop` is not
+`refl`). `loop2 := fun (j : I) => hcomp S1 (~j \/ j) (fun (i : I) => [ ~j
+-> base, j -> loop i ]) (loop j)` is a formal `hcomp`, and `loop2T` checks
+that the transport along `code3 (loop2 @ j)` moves `0` to `2` (the fold
+of `loop2` is the S3c `transTwoLoops` composite). In `circle.json`,
+`loopPath` is `{"path": "loop", "args": []}` and `loop2` is `{"hcomp":
+{"phi": "i \/ ~i", "base": {"path": "loop", "args": []}}}`. The
+check refusals `fold-missing-path` (`TYPE_MISMATCH`),
+`fold-path-boundary` (`PATH_END`) and `loop-not-refl` (`PATH_UIP`). The
+evals `circle loopAt0` (`1`) and `circle loop2At0` (`2`). The C path cases
+"path constructor declaration" (domain mode, accepted), "path
+constructor boundary of a wrong type" (`TYPE_MISMATCH`), "path
+constructor boundary that does not cover" (`SYSTEM_COVER`), "path
+constructor with no boundary" (`HIT_BOUNDARY`), "formal hcomp at a HIT"
+and "path constructor at a neutral interval" (`loop (i /\ j)`, a
+connection square), the last two as round-trips.
+
+Deviations from the plan (kickoff section 2; the kickoff text gives the
+rulings):
+
+- Counts. Before review, path regressions were 36, not 35: next to the 3 planned
+  declaration refusals, a `domain_accepts` case ("path constructor
+  declaration") checks that the domain accepts a path constructor.
+- The fold of a constructor with 2 interval fields, and a `p @ j`
+  boundary image, move to S4c (`HIT_BOUNDARY` in S4a): no family of
+  dimension 2 exists before S4c item 15.
+- `OP_FOLD_FAMILY` carries the result type `RES` as one more argument,
+  before the scrutinee. The planned fold term had no result type, and
+  the fold of a formal `hcomp` is an `hcomp` in `RES` (for `code3`, an
+  `hcomp` in `Type 0`, so `hcomp_univ` makes the Glue that `loop2T`
+  transports). The printer does not print `RES`.
+- `glue_at` has a fallback that the kickoff did not plan: when no Glue
+  record matches and the line at the end is not a Glue type, it takes
+  the Glue of the line at a fresh variable and puts the end in for the
+  variable (`val_isubst`). Transport along a fold of a path constructor
+  (`loopT`) needs it: at an end, the fold gives the end case, not the
+  case path at the end, so no Glue record is made.
+- JSON rule 5 comes before rule 4 (the order is rule 1, 5, 4, 6; the
+  kickoff put rule 4 right after rule 1). A HIT path whose body does not
+  mention the variable stays `{"refl": ...}`, so a point keeps the path
+  form. Rule 4 applies to a path constructor with 1 interval field only:
+  a constructor with 2 interval fields, a point constructor or a field
+  that is not of the family that mentions the variable goes to rule 6
+  (S4c items 17 and 18 extend `hit_tree`). In `"phi"`, the path variable
+  prints as `i`, and the backslash of `\/` is written as `\`.
+- The `{"trunc": a}` form of `trunc1` and `trunc0` moves to S4b, with
+  `Trunc1`.
+- The evals name the value defs `loopAt0` and `loop2At0` (the
+  `glue.lang` `uaAt9` form), not the path defs `loopT` and `loop2T`: an
+  eval of a path def gives a path, not the `Fin` value.
+- `loop-not-refl` gives `PATH_UIP` (the kickoff allowed `PATH_UIP` or
+  `PATH_END`).
+- `test/check/self.lang` renames its def `loop` to `spin`: `loop` is now
+  a domain constructor, and a program def with its name is refused
+  (`REFUSE_NAME`).
+- H4 is not killed by the planned `fold-missing-path`: `fold 0 x` is
+  `TYPE_MISMATCH` with and without the mutant, as a missing fold case is
+  `TYPE_MISMATCH`. The mutant refuses each correct `S1` fold, so
+  `circle.lang` (`code2`) and `fold-path-boundary` kill it. No new
+  refusal or def is necessary.
+- G1 is a new row, for the `glue_at` fallback.
+
+Mutants: one at a time, `make -B` for each build, by hand. Each file was
+restored and its `shasum` was confirmed. Each kill came from a test, not
+from a compile error. H6 and H8 add a `(void)` use, and H1, H2, H4 and H5
+add a static next to the def that they change, so that the clang pass
+compiles the mutant.
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| H1 | `hcomp_branch`, `boundary_core`: a boundary branch infers its type, with no check at the family | C case "path constructor boundary of a wrong type" |
+| H2 | `system_branches`, `boundary_core`: no `SYSTEM_COVER` for the boundary | C case "path constructor boundary that does not cover" |
+| H3 | `reduce_ctor`: no boundary reduction | `circle.lang` (`loopPath`: `PATH_END`, the end stays `loop i0`), `loop-not-refl`, `fold-path-boundary`, both evals, C cases "formal hcomp at a HIT" and "path constructor at a neutral interval" |
+| H4 | `rule_fold`: the fold arity counts the point constructors only | `circle.lang` (`code2`: `TYPE_MISMATCH`), `fold-path-boundary` (`TYPE_MISMATCH`, not `PATH_END`), both evals |
+| H5 | `fold_family`: a path case infers its type (its own ends) | `fold-path-boundary` (accepted) |
+| H6 | `fold_path`: the fold at `i0`, not `case @ r` | `circle.lang` (`loopT`: `PATH_END`, `0`, not `1`), both evals, `circle.json` |
+| H7 | `hcomp`: the true-key test skips a family | `circle.lang` (`loop2`: `PATH_END`), both evals, `circle.json`, C case "formal hcomp at a HIT" |
+| H8 | `fold_family`: `stuck_fold` in place of `fold_hcomp` | `circle.lang` (`loop2T`: `PATH_END`), both evals, `circle.json` |
+| H9 | `conv_loop`: an `OP_CTOR` with an interval field converts with each `OP_CTOR` of the same family | `loop-not-refl` (accepted) |
+| H10 | `transp_data` at `OP_FAMILY`: no `return base` | `circle.lang` (`transpBase`: `PATH_END`), both evals |
+| H11 | `path_json`: no rule 4 (`hit_family` skipped) | `circle.json` |
+| G1 | `glue_at`: the fallback returns `INTERNAL` at once | `circle.lang` (`loopT`: `INTERNAL`), both evals, `circle.json` |
+
+Review fixes: `val_isubst` preserves De Morgan interval terms when
+recovering a Glue endpoint. Face normalization remains limited to faces,
+so a connection such as `j /\ ~j` is preserved inside path constructors.
+A transported path with this connection now prints a normal form that
+checks on replay. `hit_tree` keeps each recursive field's completion flag
+local, so a later field that varies along the path triggers rule 6 instead
+of emitting an incomplete JSON object. Three C cases cover the connection
+round-trip, the JSON fallback and the supported recursive path tree. The
+two defect cases fail against the original staged sources and pass with
+the fixes; the full gate is green at the counts above.

@@ -74,9 +74,11 @@ starts again for each instance.
 | `PathP (fun _ => Type 0) A B`, with `A` = `Fin n` and a literal `n` | `{"from": "A", "to": "B", "transport": [t0, ...]}` (rule 1, before rules 5 and 6). `tk` is the value in `B` of `transp (fun i => p @ i) i0 k`, for each `k` below `n`. For a `ua` line, for example `ua (Fin 3) (Fin 3) e`, the table is `witness e` at each `k`. For a line made by `hcomp` in `Type 0`, the table is the composite transport: `transTwoLoops` in `examples/univ.lang`, two `loopRot1` lines, gives `[2, 0, 1]`. When a table value does not compute to a number or a canonical value, rules 5 and 6 apply. |
 | `Glue A phi sys`, with no true key | Refused (`JSON_VALUE`): a Glue element has no JSON form. A Glue type with a true key is its branch type `T`. |
 | `PathP (fun i => A) a b`, a body with `i` | `{"from": a, "to": b, "term": t}` (rule 6). `t` is the printed path term, as a string. A `transp` that does not compute stays in `t` as `transp (fun j => A) phi a`. An `hcomp` that does not compute stays in `t` as `hcomp A phi (fun i => [ k -> u, ... ]) u0`. |
+| `PathP (fun _ => F) a b`, `F` a family with a path constructor, a body with `i` | Rule 4 (after rules 1 and 5, before rule 6): the body at `i` as a tree. A path constructor whose last interval argument is `i` gives `{"path": "name", "args": [t, ...]}`, with a tree for each point field. A formal `hcomp` gives `{"hcomp": {"phi": "face", "base": t}}`, with the face printed and the base as a tree. When another part of the body mentions `i` (a point constructor, a field that is not of the family, or a constructor with 2 interval fields), rule 6 applies. In `examples/circle.lang`, `loopPath` gives `{"path": "loop", "args": []}`. |
 | A family whose constructors have no fields | The constructor name, as a string |
 | A family with one constructor | An object of the fields |
 | Any other family | `{"tag": "name", ...}` with the fields of that constructor |
+| A formal `hcomp` at a family with a path constructor | `{"hcomp": {"phi": "face", "base": t}}` |
 
 An indexed family uses the same rules. Its index is in `type` (for
 example `Lot 3`), not in `value`.
@@ -129,13 +131,47 @@ instance (`uaArrowPlus3`). `langc check` gives these codes for Glue:
 | `UNGLUE_TYPE` | The argument of `unglue` does not have a Glue type |
 | `SYSTEM_COVER` | The keys of the system of `Glue` or `glue` do not cover `phi` |
 
+## Higher inductive types
+
+A domain family can have path constructors. A path constructor takes its
+point fields, then 1 or 2 interval fields `(i : I)`, then a boundary
+system `[ phi -> t, ... ]` that covers the faces of its interval fields
+(`~i \/ i` for 1 field). Each branch must have the family type at the
+parameters, and the branches must agree where their keys overlap. A
+program cannot declare a family (`REFUSE_DATA`), so only the domain
+declares a path constructor. `domain/domain.lang` declares the circle:
+`family S1 := base | loop (i : I) [ ~i -> base, i -> base ]`.
+
+| Term | Form | Rules |
+|---|---|---|
+| Path constructor | `loop r`, with `r : I` | At a true key of the boundary, the branch term: `loop i0` and `loop i1` are `base`. Else `loop r` is canonical. A path constructor value does not convert with its boundary point, so `loop` is not `refl` (`PATH_UIP`). |
+| `fold` with path cases | `fold c1 ... cn x : RES`, one case for each constructor, in order | The case of a path constructor of dimension 1 has the type `(fields) -> PathP (fun (_ : I) => RES) B0 B1`. `B0` and `B1` are the fold images of the boundary at `i0` and `i1`: a field gives its folded value, a point constructor gives its case at the images of its fields. `fold (loop r)` is `case @ r`. |
+| `hcomp` at a family with a path constructor | `hcomp F phi (fun (j : I) => [ k -> u, ... ]) u0` | A true key gives the branch at `i1`. Else the `hcomp` is canonical (a formal `hcomp`), also at `i0` and with a neutral base. `fold` of a formal `hcomp` is `hcomp RES phi (fun (j : I) => [ k -> fold u, ... ]) (fold u0)`. |
+| `transp` at a family with no parameters | `transp (fun (_ : I) => S1) phi v` | `v`: the line is constant by the form of the family (this is not regularity). A family with parameters stays stuck. |
+
+`examples/circle.lang` has `loopPath`, the transport along `code2 (loop
+i)` (a fold of `S1` into `Type 0` with a `ua` path case), which moves
+`0` to `1`, and the formal `hcomp` `loop2`, whose transport along
+`code3` moves `0` to `2`. A fold of a constructor with 2 interval fields
+comes in S4c. `langc check` gives these codes for path constructors:
+
+| Code | Cause |
+|---|---|
+| `HIT_BOUNDARY` | A path constructor has no boundary, more than 2 interval fields, or a point field after an interval field; a constructor with no interval field has a boundary; a fold meets a boundary term that is not a field or an earlier point constructor, or a constructor with 2 interval fields |
+| `SYSTEM_COVER` | The boundary keys do not cover the faces of the interval fields |
+| `SYSTEM_OVERLAP` | Two boundary branches do not agree where both keys hold |
+| `TYPE_MISMATCH` | A boundary branch does not have the family type, or a fold has no case for a path constructor |
+| `PATH_END` | The case of a path constructor does not have the fold images of the boundary as its ends |
+
 ## The domain
 
 `domain/domain.lang` is the sample domain. `gen/embed.c` embeds it in the
 executable at build time. `domain/README.md` tells how to replace it.
 It holds the equivalence library: `isContr`, `fiber`, `isEquiv`, `Equiv`,
-`idEquiv` and `isoToEquiv`, and the univalence defs `ua` and `uaArrow`
-(see Glue). An `Equiv` value holds a function, so a
+`idEquiv` and `isoToEquiv`, the univalence defs `ua` and `uaArrow`
+(see Glue), and the circle `S1` (see Higher inductive types). A program
+def cannot have the name of a domain constructor, for example `loop`
+(`REFUSE_NAME`). An `Equiv` value holds a function, so a
 program def of an `Equiv` type is refused by `langc build`
 (`JSON_VALUE`). Write the equivalence inline in a data def, or under a Pi
 type. A program def whose type holds a Glue type, for example a path

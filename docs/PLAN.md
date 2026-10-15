@@ -99,7 +99,14 @@ S1 closed both:
   `hcomp` at a Glue type and `hcomp` in `Type 0` reduce, `hcomp` in `Type
   0` gives a Glue type whose branches hold the equivalences of the
   reversed lines (`lineToEquiv`), and `uaArrow` is a library def. S3 is
-  done.
+  done. S4a: a domain family can have path constructors (interval fields
+  and a boundary system), `S1` is a domain family, a path constructor at
+  a true face of its boundary gives the boundary term and is canonical
+  elsewhere (`loop` is not `refl`), `fold` takes a path case for each
+  path constructor, `hcomp` at such a family is a canonical value (a
+  formal `hcomp`) away from a true face, `transp` at a family with no
+  parameters gives its base, and the JSON writer prints a path in such a
+  family as a tree (rule 4).
 
 ## 4. The cubical kernel
 

@@ -6,6 +6,9 @@ family Item := makeItem (itemColor : Color) (itemPrice : Nat) (itemCount : Nat)
 family Stack := bottom | push (top : Nat) (rest : Stack)
 -- An indexed family (former F15): `Lot 3` is a lot of size 3.
 family Lot (size : Nat) := makeLot (lotPrice : Nat)
+-- The circle, a higher inductive family (S4a, R1 (a)). The path
+-- constructor loop goes from base to base.
+family S1 := base | loop (i : I) [ ~i -> base, i -> base ]
 
 def lineTotal : (item : Item) -> Nat :=
   fun (item : Item) => natMul (itemPrice item) (itemCount item)

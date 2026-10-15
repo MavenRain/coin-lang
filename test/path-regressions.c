@@ -27,6 +27,47 @@ static int accepts(const char *label, const char *source) {
   return ok;
 }
 
+/* SOURCE after the extra domain text DOMAIN, which can declare a family (a
+   program cannot: REFUSE_DATA). */
+static int domain_checked(Arena *arena, Machine *m, Diag *diag, const char *domain, const char *source) {
+  DeclList decls;
+  diag_init(diag);
+  return front_load_domain(arena, "path-regression", domain, source, strlen(source), &decls, diag)
+      && check_program(arena, &decls, m, diag);
+}
+
+static int domain_accepts(const char *label, const char *domain, const char *source) {
+  Arena arena;
+  Machine m;
+  Diag diag;
+  int ok;
+  arena_init(&arena, (size_t)128 << 20);
+  ok = domain_checked(&arena, &m, &diag, domain, source);
+  if (!ok) {
+    fprintf(stderr, "FAIL %s\n", label);
+    diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return ok;
+}
+
+/* 1 when DOMAIN and SOURCE fail and the first diagnostic has CODE. */
+static int domain_refuses(const char *label, const char *domain, const char *source, const char *code) {
+  Arena arena;
+  Machine m;
+  Diag diag;
+  int ok;
+  arena_init(&arena, (size_t)128 << 20);
+  ok = !domain_checked(&arena, &m, &diag, domain, source) && diag.set && strcmp(diag.code, code) == 0;
+  if (!ok) {
+    fprintf(stderr, "FAIL %s: expected %s\n", label, code);
+    if (diag.set)
+      diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return ok;
+}
+
 static int system_conversion(void) {
   Arena arena;
   Machine m;
@@ -133,7 +174,7 @@ static int print_refused(const char *label, const char *source) {
   return ok;
 }
 
-static int json_contains(const char *label, const char *source, const char *expected) {
+static int domain_json_contains(const char *label, const char *domain, const char *source, const char *expected) {
   Arena arena;
   Machine m;
   Diag diag;
@@ -141,7 +182,7 @@ static int json_contains(const char *label, const char *source, const char *expe
   size_t len = 0;
   int ok;
   arena_init(&arena, (size_t)128 << 20);
-  ok = checked(&arena, &m, &diag, source)
+  ok = domain_checked(&arena, &m, &diag, domain, source)
     && json_document(&m, &text, &len)
     && strstr(text, expected) != NULL;
   if (!ok) {
@@ -150,6 +191,10 @@ static int json_contains(const char *label, const char *source, const char *expe
   }
   arena_release(&arena);
   return ok;
+}
+
+static int json_contains(const char *label, const char *source, const char *expected) {
+  return domain_json_contains(label, "", source, expected);
 }
 
 int main(void) {
@@ -236,6 +281,37 @@ int main(void) {
   failed += !json_contains("stuck transport table uses path syntax",
     "def neutralLoop : Path (Type 0) (Fin 1) (Fin 1) := hcomp (Path (Type 0) (Fin 1) (Fin 1)) i0 (fun (_ : I) => [ ]) refl\n",
     "\"term\":\"fun i =>");
+  failed += !domain_accepts("path constructor declaration",
+    "family S1x := basex | loopx (i : I) [ ~i -> basex, i -> basex ]\n",
+    "def p : Path S1x (loopx i0) (loopx i1) := fun (i : I) => loopx i\n");
+  failed += !domain_refuses("path constructor boundary of a wrong type",
+    "family S1x := basex | loopx (i : I) [ ~i -> 0, i -> basex ]\n",
+    "def u : Nat := 0\n", "TYPE_MISMATCH");
+  failed += !domain_refuses("path constructor boundary that does not cover",
+    "family S1x := basex | loopx (i : I) [ ~i -> basex ]\n",
+    "def u : Nat := 0\n", "SYSTEM_COVER");
+  failed += !domain_refuses("path constructor with no boundary",
+    "family S1x := basex | loopx (i : I)\n",
+    "def u : Nat := 0\n", "HIT_BOUNDARY");
+  failed += !domain_json_contains("path tree fallback after a recursive field",
+    "family Tree := leaf | branch (subtree : Tree) (label : S1) (i : I) [ ~i -> subtree, i -> subtree ]\n",
+    "def p : Path Tree leaf leaf := fun (j : I) => branch leaf (loop j) j\n",
+    "\"value\":{\"from\":{\"tag\":\"leaf\"},\"to\":{\"tag\":\"leaf\"},\"term\":\"fun j => branch leaf (loop j) j\"}}]}");
+  failed += !domain_json_contains("path tree with a recursive field",
+    "family Tree := leaf | branch (subtree : Tree) (label : S1) (i : I) [ ~i -> subtree, i -> subtree ]\n",
+    "def p : Path Tree leaf leaf := fun (j : I) => branch (branch leaf base j) base j\n",
+    "\"value\":{\"path\":\"branch\",\"args\":[{\"path\":\"branch\",\"args\":[{\"tag\":\"leaf\"},\"base\"]},\"base\"]}}]}");
+  failed += !roundtrip("formal hcomp at a HIT",
+    "def original : Path S1 base base := fun (j : I) => hcomp S1 (~j \\/ j) (fun (i : I) => [ ~j -> base, j -> loop i ]) (loop j)\n");
+  failed += !roundtrip("path constructor at a neutral interval",
+    "def original : PathP (fun (i : I) => Path S1 base (loop i)) refl (fun (j : I) => loop j) := fun (i : I) => fun (j : I) => loop (i /\\ j)\n");
+  failed += !roundtrip("Glue endpoint substitution preserves interval connections",
+    "def code : S1 -> S1 -> Type 0 := fun (y : S1) => fun (x : S1) =>\n"
+    "  fold (Path S1 y y) (ua (Path S1 y y) (Path S1 y y) (idEquiv (Path S1 y y))) x\n"
+    "def transportSelf : (y : S1) -> Path S1 y y := fun (y : S1) =>\n"
+    "  transp (fun (i : I) => code y (loop i)) i0 (fun (_ : I) => y)\n"
+    "def p : PathP (fun (j : I) => Path S1 (loop (j /\\ ~j)) (loop (j /\\ ~j)))\n"
+    "  (transportSelf base) (transportSelf base) := fun (j : I) => transportSelf (loop (j /\\ ~j))\n");
   printf("path regressions: %d failed\n", failed);
   return failed != 0;
 }

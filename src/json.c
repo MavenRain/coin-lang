@@ -143,12 +143,27 @@ static int is_enum(const Machine *m, const FamilyInfo *f) {
 /* Only constants: the name. One constructor: an object of the fields.
    Otherwise: an object with "tag" and the fields. A field type is in the
    context of the family parameters, as in check.c. */
+/* The printed interval term PHI as a JSON string. NAMES name its free
+   interval variables (NULL for a closed term). */
+static int phi_json(Out *o, const char *const *names, uint32_t name_count, const Value *phi) {
+  char *text = arena_alloc(o->m->arena, JSON_TYPE_MAX);
+  if (text == NULL)
+    return diag_fail(o->m->diag, "OOM", o->def, "the arena limit is reached");
+  if (!value_print(o->m, names, name_count, phi, text, JSON_TYPE_MAX))
+    return diag_fail(o->m->diag, "JSON_TYPE", o->def, "an hcomp face cannot be printed as source syntax");
+  return put_string(o, text);
+}
+
 static int family_json(Out *o, const Value *type, const Value *v) {
   const FamilyInfo *f;
   const CtorInfo *ci;
   const Env *env = NULL;
   uint32_t i;
   int ok;
+  /* A formal hcomp at a HIT (S4 R3 (a)) is a canonical value. */
+  if (val_is(v, OP_HCOMP) && v->argc == 4u)
+    return put_text(o, "{\"hcomp\":{\"phi\":") && phi_json(o, NULL, 0u, v->args[1]) && put_text(o, ",\"base\":")
+      && value_json(o, type, v->args[3]) && put_text(o, "}}");
   if (type->inst >= o->m->family_count || !val_is(v, OP_CTOR) || v->inst >= o->m->ctor_count)
     return internal(o, "a family value that is not a constructor");
   f = &o->m->families[type->inst];
@@ -364,27 +379,131 @@ static int table_json(Out *o, const Value *type, const Value *v, int *done) {
   return put_text(o, "]}");
 }
 
+/* 1 when TY is a family with a path constructor (a HIT). */
+static int hit_family(const Machine *m, const Value *ty) {
+  const FamilyInfo *f;
+  uint32_t k;
+  if (ty == NULL || !val_is(ty, OP_FAMILY) || ty->inst >= m->family_count)
+    return 0;
+  f = &m->families[ty->inst];
+  for (k = 0; k < f->ctor_count; k++)
+    if (f->first_ctor + k < m->ctor_count && m->ctors[f->first_ctor + k].interval_count > 0u)
+      return 1;
+  return 0;
+}
+
+/* 1 when the value X at the path variable (level 0) mentions it, -1 on an
+   error. */
+static int mentions_ivar(Machine *m, const Value *x) {
+  const Core *c = quote_value(m, 1u, x);
+  if (c == NULL)
+    return -1;
+  return mentions(c, 0u);
+}
+
+/* Rule 4 (S4 R9 (a)): X is the body of a path at the HIT type TY, at the
+   path variable (level 0). A path constructor with one interval field whose
+   argument is the path variable gives {"path": NAME, "args": [field
+   trees]}; a formal hcomp gives {"hcomp": {"phi": printed, "base": tree}};
+   a point constructor that does not mention the variable gives its
+   family_json object. *DONE is 0 for each other body: then the caller
+   resets the output and rule 6 applies. */
+static int hit_tree(Out *o, const Value *ty, const Value *x, int *done) {
+  static const char *const names[1] = { "i" };
+  Machine *m = o->m;
+  const FamilyInfo *f = &m->families[ty->inst];
+  const CtorInfo *ci;
+  const Env *env = NULL;
+  const Core *last;
+  uint32_t i;
+  int at;
+  *done = 0;
+  if (val_is(x, OP_HCOMP) && x->argc == 4u)
+    return put_text(o, "{\"hcomp\":{\"phi\":") && phi_json(o, names, 1u, x->args[1]) && put_text(o, ",\"base\":")
+      && hit_tree(o, ty, x->args[3], done) && (!*done || put_text(o, "}}"));
+  if (!val_is(x, OP_CTOR) || x->inst >= m->ctor_count || m->ctors[x->inst].family != ty->inst)
+    return 1;
+  ci = &m->ctors[x->inst];
+  if (ci->interval_count == 0u) {
+    at = mentions_ivar(m, x);
+    if (at != 0)
+      return at == 1;
+    *done = 1;
+    return family_json(o, ty, x);
+  }
+  if (ci->interval_count != 1u || x->argc != f->param_count + ci->field_count + 1u)
+    return 1;
+  last = quote_value(m, 1u, x->args[x->argc - 1u]);
+  if (last == NULL)
+    return 0;
+  if (last->kind != CORE_VAR || last->index != 0u)
+    return 1;
+  for (i = 0; i < f->param_count; i++)
+    env = env_push(m, env, ty->args[i]);
+  if (!put_text(o, "{\"path\":") || !put_string(o, ci->name) || !put_text(o, ",\"args\":["))
+    return 0;
+  for (i = 0; i < ci->field_count; i++) {
+    const FieldInfo *fi = &ci->fields[i];
+    const Value *field = x->args[f->param_count + i];
+    const Value *ft;
+    if (i > 0 && !put_text(o, ","))
+      return 0;
+    if (fi->recursive) {
+      int field_done;
+      if (!hit_tree(o, ty, field, &field_done))
+        return 0;
+      if (!field_done)
+        return 1;
+      continue;
+    }
+    at = mentions_ivar(m, field);
+    if (at != 0)
+      return at == 1;
+    ft = eval_core(m, env, fi->type);
+    if (ft == NULL || !value_json(o, ft, field))
+      return 0;
+  }
+  *done = 1;
+  return put_text(o, "]}");
+}
+
 /* Rule 1 first (table_json). Rule 5: the body at a fresh interval variable
-   does not mention it, so the path is refl of its point. Rule 6: else the
-   ends and the printed normal form of the path. An instance is closed, so
-   the fresh level is 0. */
+   does not mention it, so the path is refl of its point. Rule 4 (hit_tree):
+   a path at a HIT type. Rule 6: else the ends and the printed normal form of
+   the path. An instance is closed, so the fresh level is 0. */
 static int path_json(Out *o, const Value *type, const Value *v) {
   Machine *m = o->m;
   const Value *a = type->args[0];
   const Value *b = type->args[1];
+  const Value *at;
+  const Value *line;
   const Core *body;
   const Value *point;
+  size_t mark;
   int done;
   if (!table_json(o, type, v, &done))
     return 0;
   if (done)
     return 1;
-  body = quote_value(m, 1u, path_apply(m, v, val_ivar(m, 0u), a, b));
+  at = path_apply(m, v, val_ivar(m, 0u), a, b);
+  body = quote_value(m, 1u, at);
   if (body == NULL)
     return 0;
   point = path_apply(m, v, val_iend(m, 0), a, b);
   if (!mentions(body, 0u))
     return put_text(o, "{\"refl\":") && point_json(o, closure_apply(m, type, val_iend(m, 0)), point) && put_text(o, "}");
+  line = closure_apply(m, type, val_ivar(m, 0u));
+  if (line == NULL)
+    return 0;
+  if (hit_family(m, line)) {
+    mark = o->len;
+    if (!hit_tree(o, line, at, &done))
+      return 0;
+    if (done)
+      return 1;
+    o->len = mark;
+    o->data[mark] = '\0';
+  }
   return put_text(o, "{\"from\":") && point_json(o, closure_apply(m, type, val_iend(m, 0)), a)
     && put_text(o, ",\"to\":") && point_json(o, closure_apply(m, type, val_iend(m, 1)), b)
     && put_text(o, ",\"term\":") && printed_json(o, v) && put_text(o, "}");

@@ -51,3 +51,6 @@ unglue-type.lang UNGLUE_TYPE
 ua-beta-neutral.lang PATH_END
 ua-not-refl.lang PATH_UIP
 glue-binder.lang GLUE_BINDER
+fold-missing-path.lang TYPE_MISMATCH
+fold-path-boundary.lang PATH_END
+loop-not-refl.lang PATH_UIP

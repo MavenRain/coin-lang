@@ -176,7 +176,8 @@ typedef enum {
   CLOS_SYS_UNGLUE,     /* PLAM: j |-> unglue (b j) at the Glue type G; args: b, G */
   CLOS_GLUE_HFILL,     /* PLAM: j |-> witness e (hfill T psi u u0 j); args: pack T e, psi, u, u0 */
   CLOS_SYS_RESTRICT,   /* PLAM: j |-> b j restricted to the Glue key K; args: b, K */
-  CLOS_EQUIV_LINE      /* PLAM: j |-> Equiv T (b (~j)) (hcomp in U); args: b, T */
+  CLOS_EQUIV_LINE,     /* PLAM: j |-> Equiv T (b (~j)) (hcomp in U); args: b, T */
+  CLOS_SYS_FOLD        /* PLAM: j |-> fold (b j) with the cases and RES of F; args: b, F (a stuck fold); field: the family */
 } ClosTag;
 
 typedef struct Value Value;
@@ -219,7 +220,13 @@ typedef struct {
   const char *name;
   uint32_t family;
   const FieldInfo *fields;
-  uint32_t field_count;
+  uint32_t field_count; /* the point fields only */
+  /* A path constructor (S4 R1 (a)): 1 or 2 interval fields after the
+     point fields, and the boundary, an OP_SYSTEM core over the
+     parameters, the point fields and the interval fields. A point
+     constructor has 0 and NULL. */
+  uint32_t interval_count;
+  const Core *boundary;
 } CtorInfo;
 
 /* A domain family. Its constructors are ctors[first_ctor ...]. A family
@@ -302,6 +309,9 @@ const Value *path_apply(Machine *m, const Value *p, const Value *r, const Value 
 const Value *val_univ(Machine *m, uint64_t level);
 const Value *val_op(Machine *m, ValKind kind, Op op, uint32_t inst, uint32_t field, const Value *const *args, uint32_t argc);
 const Value *val_make(Machine *m, Op op, uint32_t inst, uint32_t argc, const Value *a, const Value *b, const Value *c);
+/* The constructor INST at the arguments A (S4 R2 (a)): a path constructor
+   at a true face of its boundary is the branch. */
+const Value *val_ctor(Machine *m, uint32_t inst, const Value *const *a, uint32_t n);
 /* A non-dependent function type. */
 const Value *val_arrow(Machine *m, const Value *dom, const Value *cod);
 const Value *val_closure(Machine *m, ValKind kind, const char *name, const Value *dom, const Env *env, const Core *body);
