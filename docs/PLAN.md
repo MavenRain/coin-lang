@@ -91,8 +91,11 @@ S1 closed both:
   `trans` is a library def by `hcomp`. S2 is done. S3a: `Fin n`, `finAdd`
   and `finNeg` are builtins, a lambda on a `Fin n` domain with a literal
   `n` checks one case for each value (finAll), and `isContr`, `fiber`,
-  `isEquiv`, `Equiv`, `idEquiv` and `isoToEquiv` are library defs. Glue
-  and `ua` come in S3b.
+  `isEquiv`, `Equiv`, `idEquiv` and `isoToEquiv` are library defs. S3b:
+  `Glue`, `glue` and `unglue` are builtins with the face, `unglue` and
+  `transp` rules, `ua` is a library def, transport along `ua e` at a closed
+  value gives `witness e` of that value (uaβ), and the JSON writer prints a
+  path in the universe from `Fin n` as its transport table (rule 1).
 
 ## 4. The cubical kernel
 

@@ -260,3 +260,113 @@ G5 keeps the `case OP_FIN:` label and stops in it: a deleted label is a
 `-Wswitch-enum` compile error. G6 is a consistent extension, as K3 in S2a
 and K10 in S2b. No accepted def can kill it. Only a refusal can:
 `fin-case-stuck` must stay refused.
+
+## S3b
+
+S3b (Glue and univalence) is complete. The build has the builtins `Glue`,
+`glue` and `unglue` (the core operations `OP_GLUE`, `OP_GLUE_ELEM` and
+`OP_UNGLUE`). `Glue A phi (fun (_ : I) => [ k -> pack T e, ... ])` is a
+type in `Type 0`. The keys must cover `phi` (`SYSTEM_COVER`), each branch
+must be `pack T e` with `e : Equiv T A` (`GLUE_EQUIV`), two branches must
+agree where both keys hold (`SYSTEM_OVERLAP`), and the tube binder must be
+`_` (`GLUE_BINDER`). `glue (fun (_ : I) => [ k -> t, ... ]) a` checks only
+against a Glue type. Where a key holds, `unglue` of its branch must be `a`
+(`GLUE_BOUNDARY`). `unglue g` needs a term of a Glue type
+(`UNGLUE_TYPE`). A true key reduces `Glue` to its branch type `T` and
+`glue` to its branch `t`. `unglue (glue sys a)` is `a`, and at a true key
+`unglue g` is `witness e g`. Else `unglue` is stuck. `transp` along a Glue
+line gives a `glue` at `i1`: each branch comes from the fiber extension of
+its equivalence, and an `hcomp` in `A` at `i1` gives the base. Conversion
+of two Glue types compares the systems too, not only the bases. `domain/domain.lang`
+adds `ua A B e`, the Glue line with the branch `pack A e` at `~i` and
+`pack B (idEquiv B)` at `i`. Transport along `ua A B e` at a closed value
+`a` gives `witness e a` (uaβ). The JSON writer prints a path in the
+universe from `Fin n` (a literal `n`) as its transport table (rule 1): for
+example `uaPlus3` is `{"from": "Fin 11", "to": "Fin 11", "transport":
+[3, 4, ..., 2]}`. S3c is next.
+
+Gate: `make check` is GREEN at examples 14, parse 11, check 52, evals 34,
+json 14, build refusals 4, regressions 6, printer 2, path regressions 23
+(0 failed). The clang `-Wswitch-enum` pass is clean. The dash scan is
+clean.
+
+Tests: `examples/glue.lang` (`plus3`, `minus3`, `uaPlus3`, `uaBetaPlus3`,
+`loopId`, `loopRot1`, `loopRot2`, `loopRef0`, `loopRef1`, `loopRef2`,
+`gRot`, `glueFace`, `unglueGlue`, `glueOverLoop`, `uaAt9`, `rotTwice`) and
+`test/json/glue.json` (13 instances). The 6 loops at `Fin 3` give 6
+distinct tables: `loopId` `[0,1,2]`, `loopRot1` `[1,2,0]`, `loopRot2`
+`[2,0,1]`, `loopRef0` `[0,2,1]`, `loopRef1` `[1,0,2]`, `loopRef2`
+`[2,1,0]`. The check refusals `glue-equiv` (`GLUE_EQUIV`), `glue-cover`
+(`SYSTEM_COVER`), `glue-boundary` (`GLUE_BOUNDARY`), `unglue-type`
+(`UNGLUE_TYPE`), `glue-binder` (`GLUE_BINDER`), `ua-beta-neutral`
+(`PATH_END`) and `ua-not-refl` (`PATH_UIP`). The evals `glue uaAt9`
+(`1`) and `glue rotTwice` (`2`). The C round-trip cases `Glue type at a
+neutral face` and `stuck unglue` in `test/path-regressions.c`. In
+`ua-beta-neutral`, uaβ at a neutral value does not reduce: the `i1` end
+stays a stuck `hcomp B i0 ...`, because the build has no regularity.
+
+Deviations from the plan (kickoff section 2):
+
+- Counts. Check is 52, not 50: S3a ended at 45 (the `fin-case-stuck`
+  deviation), and S3b adds 7 refusals, with `glue-binder`. Build refusals
+  are 4, not 2: S3a ended at 4, and S3b adds none. Path regressions are 23
+  cases, not 21: 44c917f had 21 cases (S3a added `stuck Fin addition` and
+  the 2 printer refusal cases), and S3b adds 2.
+- `ua-not-refl`. The planned second end `refl` cannot kill G16: `refl` at
+  `Fin 3` is not a Glue type, and G16 changes only the conversion of two
+  Glue types (`OP_GLUE`). The second end is `ua (Fin 3) (Fin 3) (idEquiv
+  (Fin 3))`, the `ua` image of `refl`, a Glue line with the base `Fin 3`.
+  The observed code is `PATH_UIP` (the plan allows `PATH_UIP` or
+  `PATH_END`).
+- `gRot` is new: `(x : Fin 3) -> PathP (fun i => loopRot1 @ i) x (x + 1)`,
+  a `glue` with the branches `~i -> x` and `i -> x + 1` and the base
+  `x + 1`. It is under a Pi, so the JSON writer skips it. `glueFace` (`gRot
+  2 @ i0` is `2`, the branch, not the base `0`) and `unglueGlue` (`0` at
+  the neutral face and at `i0`) use it, for G12 and G13.
+- G14 survived the planned tests (the plan named `ua-beta-neutral` or
+  `uaBetaPlus3`). Cause: each planned Glue line is a `ua` line. Its base
+  `A` is constant, so the `comp` in `A` gives `a0` at closed values. The
+  new def `glueOverLoop` transports `glue (fun (_ : I) => [ ]) 0` along
+  `fun (i : I) => Glue (loopRot1 @ i) i0 (fun (_ : I) => [ ])`, a Glue line
+  with no branch whose base changes along `i`: `unglue` at `i1` is `1`
+  (`0` with G14).
+- `GLUE_BINDER` (ruling (a)). At the end of the build the refusal had no
+  test. The ruling is (a): the 7th check test
+  `test/check/glue-binder.lang` (the tube binder is `j`), not a C refusal
+  helper (b) and not a note only (c). This is the change from 51 to 52.
+
+Mutants: one at a time, `make -B` for each build. Each file was restored and
+its `shasum` was confirmed. Each kill came from a test, not from a compile
+error.
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| G7 | `reduce_glue`: a true key always (`1 \|\|` before `glue_true`) | each example (14): `PATH_END`, `ua` at `i0` is `Glue B i1 [...]` |
+| G8 | `glue_branch`: on a failure, check the branch again against `Sigma (T : Type 0) (T -> A)` | `glue-equiv` (accepted) |
+| G9 | `rule_glue` gives a NULL face to `system_branches`, which then uses the join of the keys | `glue-cover` (`PATH_END` at `i0`, not `SYSTEM_COVER`) |
+| G10 | `rule_glue_elem`: no `glue_boundary` (`0 &&`) | `glue-boundary` (accepted) |
+| G11 | `rule_unglue`: a term of a type that is not Glue gives `g` with its type | `unglue-type` (accepted) |
+| G12 | `reduce_unglue` rule 2: `g`, not `witness e g` | `glue.lang` (`uaBetaPlus3`: `9`, not `1`), `glue uaAt9`, `glue rotTwice`, `glue.json` |
+| G13 | `reduce_unglue` rule 1: the body of branch 0, not `a` | `glue.lang` (`unglueGlue`: `2`, not `0`), the evals, `glue.json` |
+| G14 | `transp_glue`: `a1' = a0` (no `comp` in `A`) | NEW def `glueOverLoop` (`0`, not `1`), the evals, `glue.json` |
+| G15 | `transp_glue`: `witness e u0` when the `i0` system has a true key | `ua-beta-neutral` (accepted) |
+| G16 | conversion: two `OP_GLUE` are equal when their `A` agree | `ua-not-refl` (accepted) |
+
+G8 accepts a branch whose `e` is a plain function `T -> A`, not an
+equivalence. G9 is a 2-site edit, because `hcomp`, `Glue` and `glue` share
+`system_branches`: the NULL face comes only from `rule_glue`. G14 gets a
+new def, as S1 M5a, S2a K3, S2b K10 and S3a G6.
+
+S3b staged review fixed three defects. When a Glue branch type is itself
+Glue, transport now recovers the outer Glue metadata before inspecting
+the reduced branch type. At a true face, unglue applies the branch
+equivalence before testing for a glue constructor of the inner type.
+The universe-path JSON table accepts canonical function points and uses
+the same source-string encoding as other function path points.
+
+Four C regressions cover the nested Glue transport round trip, nested
+unglue face reduction, a Fin 1 to function transport table, and the
+existing path-syntax fallback for a stuck transport. Against the original
+staged implementation, the first three fail with INTERNAL, GLUE_BOUNDARY
+and JSON_TYPE respectively. The corrected gate passes with 27 path
+regressions and the other counts above unchanged.

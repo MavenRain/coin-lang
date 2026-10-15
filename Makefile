@@ -19,8 +19,8 @@ build/domain.c: domain/domain.lang gen/embed.c
 build/langc: $(SRC) $(HEADERS) build/domain.c
 	$(TCC) $(CFLAGS) -o build/langc $(SRC) build/domain.c
 
-build/path-regressions: test/path-regressions.c $(FRONT) $(HEADERS) build/domain.c
-	$(TCC) $(CFLAGS) -o $@ test/path-regressions.c $(FRONT) build/domain.c
+build/path-regressions: test/path-regressions.c $(FRONT) $(TARGET) $(HEADERS) build/domain.c
+	$(TCC) $(CFLAGS) -o $@ test/path-regressions.c $(FRONT) $(TARGET) build/domain.c
 
 check-clang: build/domain.c
 	$(CC) $(CLANG_FLAGS) $(SRC) test/path-regressions.c build/domain.c

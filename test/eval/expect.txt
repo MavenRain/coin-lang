@@ -30,3 +30,5 @@ kan evPair => 3
 kan evTrans => 3
 equiv addMod => 1
 equiv rot2 => 0
+glue uaAt9 => 1
+glue rotTwice => 2

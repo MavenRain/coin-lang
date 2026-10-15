@@ -200,6 +200,8 @@ static int op_json(Out *o, const Value *type, const Value *v) {
     return list_json(o, type, v);
   case OP_FAMILY:
     return family_json(o, type, v);
+  case OP_GLUE:
+    return refuse(o, "a Glue element");
   case OP_UNIT_VAL:
   case OP_FLAG_YES:
   case OP_FLAG_NO:
@@ -240,6 +242,8 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_FIN_ADD:
   case OP_FIN_NEG:
   case OP_FIN_CASE:
+  case OP_GLUE_ELEM:
+  case OP_UNGLUE:
     return internal(o, "a type that is not a type former");
   }
   return internal(o, "an unknown operation");
@@ -317,15 +321,65 @@ static int mentions(const Core *c, uint32_t index) {
   return 1;
 }
 
-/* Rule 5: the body at a fresh interval variable does not mention it, so the
-   path is refl of its point. Rule 6: else the ends and the printed normal
-   form of the path. An instance is closed, so the fresh level is 0. */
+/* 1 when V is a number or a canonical value, including the functions and
+   types that point_json prints as source strings, with no diagnostic. */
+static int is_ready(const Value *v) {
+  return v->kind == VAL_NAT || v->kind == VAL_OP || v->kind == VAL_PLAM
+    || v->kind == VAL_LAM || v->kind == VAL_UNIV || v->kind == VAL_PI
+    || v->kind == VAL_SIGMA || v->kind == VAL_PATHP;
+}
+
+/* Rule 1 (R9 (a)): a path in a universe whose end at i0 is Fin n (a
+   literal n) is the table of transp (fun i => p @ i) i0 k for each k < n.
+   *DONE is 0 when the rule does not apply, or when a table value is not
+   ready: then the output goes back to MARK and rules 5 and 6 apply. */
+static int table_json(Out *o, const Value *type, const Value *v, int *done) {
+  Machine *m = o->m;
+  const Value *a = type->args[0];
+  const Value *from = closure_apply(m, type, val_iend(m, 0));
+  const Value *to = closure_apply(m, type, val_iend(m, 1));
+  size_t mark = o->len;
+  uint64_t k;
+  *done = 0;
+  if (from == NULL || to == NULL)
+    return 0;
+  if (from->kind != VAL_UNIV || !val_is(a, OP_FIN) || a->args[0]->kind != VAL_NAT)
+    return 1;
+  if (!put_text(o, "{\"from\":") || !point_json(o, from, a) || !put_text(o, ",\"to\":")
+      || !point_json(o, to, type->args[1]) || !put_text(o, ",\"transport\":["))
+    return 0;
+  for (k = 0; k < a->args[0]->nat; k++) {
+    const Value *vk = val_transp(m, v, val_iend(m, 0), val_nat(m, k));
+    if (vk == NULL || m->diag->set)
+      return 0;
+    if (!is_ready(vk)) {
+      o->len = mark;
+      o->data[mark] = '\0';
+      return 1;
+    }
+    if ((k > 0 && !put_text(o, ",")) || !point_json(o, type->args[1], vk))
+      return 0;
+  }
+  *done = 1;
+  return put_text(o, "]}");
+}
+
+/* Rule 1 first (table_json). Rule 5: the body at a fresh interval variable
+   does not mention it, so the path is refl of its point. Rule 6: else the
+   ends and the printed normal form of the path. An instance is closed, so
+   the fresh level is 0. */
 static int path_json(Out *o, const Value *type, const Value *v) {
   Machine *m = o->m;
   const Value *a = type->args[0];
   const Value *b = type->args[1];
-  const Core *body = quote_value(m, 1u, path_apply(m, v, val_ivar(m, 0u), a, b));
+  const Core *body;
   const Value *point;
+  int done;
+  if (!table_json(o, type, v, &done))
+    return 0;
+  if (done)
+    return 1;
+  body = quote_value(m, 1u, path_apply(m, v, val_ivar(m, 0u), a, b));
   if (body == NULL)
     return 0;
   point = path_apply(m, v, val_iend(m, 0), a, b);

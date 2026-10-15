@@ -66,7 +66,10 @@ typedef enum {
   OP_FIN,      /* Fin n: the numbers below n; a value is a VAL_NAT literal */
   OP_FIN_ADD,  /* finAdd n a b: (a + b) mod n */
   OP_FIN_NEG,  /* finNeg n a: (n - a) mod n */
-  OP_FIN_CASE  /* finAll case: k, body0, ..., body(n-1); body j at the literal j */
+  OP_FIN_CASE, /* finAll case: k, body0, ..., body(n-1); body j at the literal j */
+  OP_GLUE,     /* Glue A phi sys: a type; sys as in OP_HCOMP, each branch pack T e */
+  OP_GLUE_ELEM, /* glue: phi, sys, a; sys as in OP_HCOMP, each branch t */
+  OP_UNGLUE    /* unglue: A, phi, sys, g; stuck when no rule applies */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */
@@ -163,7 +166,13 @@ typedef enum {
   CLOS_SIGMA_FILL_COD, /* PLAM: i |-> B (hfill A phi sys u i); args: A, phi, sys, u */
   CLOS_TRANSP_PATHP,   /* PLAM: r |-> comp of p0 @ r (rule 7); args: L, phi, p0 */
   CLOS_PATHP_LINE,     /* PLAM: i |-> L(i) at r; args: L, r */
-  CLOS_PATHP_END       /* PLAM: i |-> the end FIELD of L(i); args: L */
+  CLOS_PATHP_END,      /* PLAM: i |-> the end FIELD of L(i); args: L */
+  /* transp at Glue (S3b). FIELD is the fresh level of the key KEYF. */
+  CLOS_GLUE_BASE,      /* PLAM: r |-> A(r) of the Glue line L; args: L */
+  CLOS_GLUE_T,         /* PLAM: j |-> T(r /\ j) of the branch KEYF; args: L, keyf, r */
+  CLOS_GLUE_FILL,      /* PLAM: r |-> witness (e r) (transpFill T psi u0 r); args: L, keyf, psi, u0 */
+  CLOS_CONTR_AT,       /* PLAM: j |-> c x @ j, c a contraction; args: c, x, center */
+  CLOS_PATH_REV        /* PLAM: j |-> w @ ~j; args: w, a, b (the ends of w) */
 } ClosTag;
 
 typedef struct Value Value;
@@ -247,6 +256,10 @@ typedef struct {
   uint64_t fuel;
   int overflowed;
   uint32_t fresh; /* the count of fresh levels for the Kan head test */
+  /* The result and the OP_GLUE value of the last Glue that a true key
+     reduced. transp at Glue reads them to get A, phi and sys at an end. */
+  const Value *glue_out;
+  const Value *glue_raw;
 } Machine;
 
 /* Each function returns NULL (or 0) after a diagnostic. A NULL input gives a
@@ -286,6 +299,8 @@ const Env *env_push(Machine *m, const Env *env, const Value *value);
 const Value *def_value(Machine *m, uint32_t index);
 const Value *eval_core(Machine *m, const Env *env, const Core *core);
 const Value *apply_value(Machine *m, const Value *fn, const Value *arg);
+/* transp LINE PHI BASE, for JSON rule 1 (S3b). LINE is a path value in U. */
+const Value *val_transp(Machine *m, const Value *line, const Value *phi, const Value *base);
 /* The body of a LAM, PI, SIGMA, PLAM or PATHP value at ARG. */
 const Value *closure_apply(Machine *m, const Value *binder, const Value *arg);
 /* 1 when A and B have the same normal form. LEVEL is the next free level. */

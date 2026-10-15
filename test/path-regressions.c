@@ -3,6 +3,7 @@
 
 #include "front/front.h"
 #include "front/check.h"
+#include "json.h"
 
 static int checked(Arena *arena, Machine *m, Diag *diag, const char *source) {
   DeclList decls;
@@ -59,6 +60,25 @@ static int print_refused(const char *label, const char *source) {
   return ok;
 }
 
+static int json_contains(const char *label, const char *source, const char *expected) {
+  Arena arena;
+  Machine m;
+  Diag diag;
+  const char *text = NULL;
+  size_t len = 0;
+  int ok;
+  arena_init(&arena, (size_t)128 << 20);
+  ok = checked(&arena, &m, &diag, source)
+    && json_document(&m, &text, &len)
+    && strstr(text, expected) != NULL;
+  if (!ok) {
+    fprintf(stderr, "FAIL %s: expected JSON containing %s\n", label, expected);
+    diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return ok;
+}
+
 int main(void) {
   int failed = 0;
   failed += !roundtrip("PathP binder capture",
@@ -104,6 +124,30 @@ int main(void) {
   failed += !print_refused("finite case path printing",
     "def p : (k : Fin 2) -> Path (Fin 2) (finAdd 2 k 0) k := fun k => refl\n"
     "def original : Path (Fin 2 -> Fin 2) (fun k => finAdd 2 k 0) (fun k => k) := funExt p\n");
+  failed += !roundtrip("Glue type at a neutral face",
+    "def original : (A : Type 0) -> (e : Equiv A A) -> (f : Equiv A A) -> Path (Type 0) A A := fun A e f => fun (i : I) => Glue A (~i \\/ i) (fun (_ : I) => [ ~i -> pack A e, i -> pack A f ])\n");
+  failed += !roundtrip("stuck unglue",
+    "def original : (A : Type 0) -> (e : Equiv A A) -> (x : A) -> (y : A) -> (g : PathP (fun (i : I) => Glue A (~i \\/ i) (fun (_ : I) => [ ~i -> pack A e, i -> pack A e ])) x y) -> Path A (witness e x) (witness e y) := fun A e x y g => fun (i : I) => unglue (g @ i)\n");
+  failed += !roundtrip("univalence at a Glue endpoint",
+    "def G : Type 0 := Glue (Fin 3) i0 (fun (_ : I) => [ ])\n"
+    "def u : G := glue (fun (_ : I) => [ ]) 0\n"
+    "def original : G := transport G G (ua G G (idEquiv G)) u\n");
+  failed += !roundtrip("unglue at a nested Glue face",
+    "def G : Type 0 := Glue (Fin 3) i0 (fun (_ : I) => [ ])\n"
+    "def u : G := glue (fun (_ : I) => [ ]) 0\n"
+    "def p : PathP (fun (i : I) => Glue G (~i \\/ i) (fun (_ : I) => [ ~i -> pack G (idEquiv G), i -> pack G (idEquiv G) ])) u u := fun (i : I) => glue (fun (_ : I) => [ ~i -> u, i -> u ]) u\n"
+    "def original : PathP (fun (i : I) => Path G (unglue (p @ i)) u) refl refl := fun (i : I) => refl\n");
+  failed += !json_contains("transport table with function points",
+    "def singletonFunPath : (h : Fin 1 -> Fin 1) -> (x : Fin 1) -> Path (Fin 1) (h 0) (h x) := fun h x => refl\n"
+    "def toFun : Fin 1 -> (Fin 1 -> Fin 1) := fun x => fun (_ : Fin 1) => x\n"
+    "def fromFun : (Fin 1 -> Fin 1) -> Fin 1 := fun h => h 0\n"
+    "def toFromFun : (h : Fin 1 -> Fin 1) -> Path (Fin 1 -> Fin 1) (toFun (fromFun h)) h := fun h => fun (i : I) => fun x => singletonFunPath h x @ i\n"
+    "def fromToFun : (x : Fin 1) -> Path (Fin 1) (fromFun (toFun x)) x := fun x => refl\n"
+    "def finToFun : Path (Type 0) (Fin 1) (Fin 1 -> Fin 1) := ua (Fin 1) (Fin 1 -> Fin 1) (isoToEquiv (Fin 1) (Fin 1 -> Fin 1) toFun fromFun toFromFun fromToFun)\n",
+    "\"transport\":[\"fun x => 0\"]");
+  failed += !json_contains("stuck transport table uses path syntax",
+    "def neutralLoop : Path (Type 0) (Fin 1) (Fin 1) := hcomp (Path (Type 0) (Fin 1) (Fin 1)) i0 (fun (_ : I) => [ ]) refl\n",
+    "\"term\":\"fun i =>");
   printf("path regressions: %d failed\n", failed);
   return failed != 0;
 }
