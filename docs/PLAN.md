@@ -106,7 +106,19 @@ S1 closed both:
   path constructor, `hcomp` at such a family is a canonical value (a
   formal `hcomp`) away from a true face, `transp` at a family with no
   parameters gives its base, and the JSON writer prints a path in such a
-  family as a tree (rule 4).
+  family as a tree (rule 4). S4b: `Trunc1` is a domain family (`squash1`
+  is a path between any two points), `transp` at a family with
+  parameters goes into the fields of a constructor (each along its field
+  type at the parameters of the line, a recursive field along the line;
+  the interval fields do not change) and into the tubes and the base of a
+  formal `hcomp`, and the JSON writer prints a `trunc1` point as
+  `{"trunc": a}`.
+
+Constructor transport reduces a path constructor only when its boundary
+faces use its interval fields and each branch is a recursive field, as
+with `squash1`. Other boundary terms retain an opaque `transp`: rebuilding
+the constructor alone could change its endpoints when a parameter changes.
+General boundaries require a boundary correction before they can reduce.
 
 ## 4. The cubical kernel
 

@@ -177,7 +177,10 @@ typedef enum {
   CLOS_GLUE_HFILL,     /* PLAM: j |-> witness e (hfill T psi u u0 j); args: pack T e, psi, u, u0 */
   CLOS_SYS_RESTRICT,   /* PLAM: j |-> b j restricted to the Glue key K; args: b, K */
   CLOS_EQUIV_LINE,     /* PLAM: j |-> Equiv T (b (~j)) (hcomp in U); args: b, T */
-  CLOS_SYS_FOLD        /* PLAM: j |-> fold (b j) with the cases and RES of F; args: b, F (a stuck fold); field: the family */
+  CLOS_SYS_FOLD,       /* PLAM: j |-> fold (b j) with the cases and RES of F; args: b, F (a stuck fold); field: the family */
+  /* transp at a family with parameters (S4 item 11). */
+  CLOS_FAMILY_FIELD,   /* PLAM: r |-> the type of the point field FIELD of the constructor of v at the parameters of L(r); args: L, v */
+  CLOS_SYS_TRANSP      /* PLAM: j |-> transp L phi (b j); args: b, L, phi */
 } ClosTag;
 
 typedef struct Value Value;

@@ -79,6 +79,7 @@ starts again for each instance.
 | A family with one constructor | An object of the fields |
 | Any other family | `{"tag": "name", ...}` with the fields of that constructor |
 | A formal `hcomp` at a family with a path constructor | `{"hcomp": {"phi": "face", "base": t}}` |
+| A `trunc1` or `trunc0` point | `{"trunc": a}`, with `a` the JSON of the field. In `examples/trunc.lang`, `sq1` gives `{"path": "squash1", "args": [{"trunc": 0}, {"trunc": 1}]}`. |
 
 An indexed family uses the same rules. Its index is in `type` (for
 example `Lot 3`), not in `value`.
@@ -147,7 +148,14 @@ declares a path constructor. `domain/domain.lang` declares the circle:
 | Path constructor | `loop r`, with `r : I` | At a true key of the boundary, the branch term: `loop i0` and `loop i1` are `base`. Else `loop r` is canonical. A path constructor value does not convert with its boundary point, so `loop` is not `refl` (`PATH_UIP`). |
 | `fold` with path cases | `fold c1 ... cn x : RES`, one case for each constructor, in order | The case of a path constructor of dimension 1 has the type `(fields) -> PathP (fun (_ : I) => RES) B0 B1`. `B0` and `B1` are the fold images of the boundary at `i0` and `i1`: a field gives its folded value, a point constructor gives its case at the images of its fields. `fold (loop r)` is `case @ r`. |
 | `hcomp` at a family with a path constructor | `hcomp F phi (fun (j : I) => [ k -> u, ... ]) u0` | A true key gives the branch at `i1`. Else the `hcomp` is canonical (a formal `hcomp`), also at `i0` and with a neutral base. `fold` of a formal `hcomp` is `hcomp RES phi (fun (j : I) => [ k -> fold u, ... ]) (fold u0)`. |
-| `transp` at a family with no parameters | `transp (fun (_ : I) => S1) phi v` | `v`: the line is constant by the form of the family (this is not regularity). A family with parameters stays stuck. |
+| `transp` at a family with no parameters | `transp (fun (_ : I) => S1) phi v` | `v`: the line is constant by the form of the family (this is not regularity). |
+| `transp` at a family with parameters | `transp (fun (i : I) => F (p i)) phi v` | At a constructor `v`: the same constructor at the parameters of the line at `i1`. Each point field goes along its field type at the parameters of the line, and a recursive field goes along the line. The interval fields do not change. At a formal `hcomp`: `hcomp` at the line at `i1`, with each tube and the base transported. A neutral `v` stays stuck. |
+
+Constructor transport reduces a path constructor only when its boundary
+faces use its interval fields and each branch is a recursive field, as
+with `squash1`. Other boundary terms retain an opaque `transp`: rebuilding
+the constructor alone could change its endpoints when a parameter changes.
+General boundaries require a boundary correction before they can reduce.
 
 `examples/circle.lang` has `loopPath`, the transport along `code2 (loop
 i)` (a fold of `S1` into `Type 0` with a `ua` path case), which moves

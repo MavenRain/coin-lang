@@ -174,6 +174,11 @@ static int family_json(Out *o, const Value *type, const Value *v) {
     return put_string(o, ci->name);
   for (i = 0; i < f->param_count; i++)
     env = env_push(o->m, env, type->args[i]);
+  /* The point of a truncation (PLAN section 3, rule 4) is {"trunc": a}. */
+  if ((strcmp(ci->name, "trunc1") == 0 || strcmp(ci->name, "trunc0") == 0) && ci->field_count == 1u) {
+    const Value *ft = eval_core(o->m, env, ci->fields[0].type);
+    return ft != NULL && put_text(o, "{\"trunc\":") && value_json(o, ft, v->args[f->param_count]) && put_text(o, "}");
+  }
   ok = put_text(o, "{");
   if (f->ctor_count != 1)
     ok = ok && put_text(o, "\"tag\":") && put_string(o, ci->name);

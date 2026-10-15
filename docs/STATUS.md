@@ -637,3 +637,100 @@ of emitting an incomplete JSON object. Three C cases cover the connection
 round-trip, the JSON fallback and the supported recursive path tree. The
 two defect cases fail against the original staged sources and pass with
 the fixes; the full gate is green at the counts above.
+
+## S4b
+
+S4b (recursive fields under parameters, `Trunc1`, `transp` at a family
+with parameters, the `{"trunc": a}` JSON form) is complete. A domain
+family with parameters can have a recursive field of the type `F p1 ..
+pn`, the family at its own parameter variables (`own_family`); a
+recursive field at other arguments gives `DOMAIN_FAMILY`.
+`domain/domain.lang` adds `isProp` and `isSet` (after `isContr`) and
+`family Trunc1 (A : Type 0) := trunc1 (truncOf : A) | squash1
+(squashFrom : Trunc1 A) (squashTo : Trunc1 A) (i : I) [ ~i ->
+squashFrom, i -> squashTo ]`. `transp` at a family with parameters (R7
+(a)) is `transp_family`: at a constructor, it gives the same constructor
+at the parameters of the line at `i1`; each point field goes along its
+field type at the parameters of the line (the new closure
+`CLOS_FAMILY_FIELD`, evaluated by `field_type_at`), a recursive field
+goes along the line, and the interval fields do not change. At a formal
+`hcomp`, it gives `hcomp` at the line at `i1`, with each tube transported
+(the new closure `CLOS_SYS_TRANSP`) and the base transported. A neutral
+value stays stuck. `family_json` prints a `trunc1` or `trunc0` point as
+`{"trunc": a}`.
+
+Gate: `make check` is GREEN at examples 17, parse 11, check 56, evals 38,
+json 17, build refusals 4, regressions 6, printer 2, path regressions 40
+(0 failed). The clang `-Wswitch-enum` pass is clean. The dash scan is
+clean.
+
+Tests: `examples/trunc.lang` (`sq1`, `map1`, `map1At`, `rot3`,
+`truncUa`, `truncAt`, `truncSq`, `truncHcomp`) and `test/json/trunc.json`
+(7 instances; `map1` is a function with a `Type 0` binder and does not
+emit). `map1` folds `Trunc1 A` into `Trunc1 B` with the cases `fun a =>
+trunc1 B (f a)` and `squash1 B` (eta-expanded), and `map1At` checks it at
+`r -> r + 1`. `truncUa` checks that the transport along `Trunc1 (rot3 @
+i)` moves `trunc1 (Fin 3) 0` to `trunc1 (Fin 3) 1`. `truncSq` checks that
+the transport of `squash1 (Fin 3) (trunc1 (Fin 3) 0) (trunc1 (Fin 3) 1)
+j` is `squash1 (Fin 3) (trunc1 (Fin 3) 1) (trunc1 (Fin 3) 2) j`, as a
+path of paths (the ends alone do not show the recursive fields).
+`truncHcomp` checks that the transport of a formal `hcomp` with the tubes
+`trunc1 (Fin 3) 0` and `squash1 ...` moves each tube and the base. In
+`trunc.json`, `sq1` is `{"path": "squash1", "args": [{"trunc": 0},
+{"trunc": 1}]}` and `truncAt` is `{"trunc": 1}`. The eval `trunc truncAt`
+(`trunc1 (Fin 3) 1`). The C path case "transport of a formal hcomp at
+Trunc1 along a parameter line" (a neutral line `Trunc1 (p @ i)`, so the
+fields of the tubes stay stuck transports) round-trips.
+`test/regressions.js` also refuses a recursive field at other arguments
+(`DOMAIN_FAMILY`).
+
+Deviations from the plan (kickoff section 2; the kickoff text gives the
+rulings):
+
+- Counts. Path regressions are 40, not 36: S4a ended at 39 C cases (3
+  review-fix cases and 1 `domain_accepts` case), and S4b adds 1.
+- The `Trunc1` fields are `truncOf`, `squashFrom` and `squashTo`, not `a`,
+  `x` and `y`. A domain field name is a core name (R4): a field `x` made
+  the printer rename a program binder `x` to `_x0`, and the eval
+  `universes Endo` failed.
+- `trunc.lang` names the `ua` path `rot3 : Path (Type 0) (Fin 3) (Fin 3)`
+  (the `glue.lang` form) and uses `Trunc1 (rot3 @ i)` as the line. Its
+  type holds no Glue type and no `Equiv`, so `langc build` prints it by
+  rule 1 (`[1, 2, 0]`). The equivalence stays inline in `rot3`.
+- The eval names the value def `truncAt` (the S4a `loopAt0` form), not
+  the path def `truncUa`: an eval of a path def gives a path.
+- `{"trunc": a}` applies in each JSON rule that prints a `trunc1` or
+  `trunc0` value (rule 4 path arguments, `{"refl": ...}`, and a top-level
+  value), not only in rule 4.
+
+Mutants: one at a time, `make -B` for each build, by a runner
+(`lang-template-work/coin-lang-S4b-mut/mut.sh`: a site assert, a one-line
+edit of `src/front/eval.c`, restore). Each file was restored and its
+`shasum` was confirmed (a `src` shasum file before and after). Each kill
+came from a test, not from a compile error. M9a ran by hand in item 9.
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| M9a | `own_family`: the arguments of the field type are not compared | `test/regressions.js` (the recursive field at other arguments is accepted) |
+| H12 | `transp_family`: each point field copied, not transported | `trunc.lang` (`truncUa`: `PATH_END`, the end stays `trunc1 (Fin 3) 0`), `trunc truncAt`, `trunc.json` |
+| H13 | `transp_family`: a recursive field copied, not transported along the line | `trunc.lang` (`truncSq`: `PATH_UIP`), `trunc truncAt`, `trunc.json` |
+| H14 | `transp_family`: at a formal `hcomp`, the system kept, the tubes not transported | `trunc.lang` (`truncHcomp`: `PATH_UIP`), `trunc truncAt`, `trunc.json` |
+
+### S4b review fix
+
+The original constructor transport rule did not commute with general HIT
+boundaries. In a family `ParamHit a` with a boundary `paramPoint a a`,
+transport from `a = trunc1 (Fin 3) 0` to `a = trunc1 (Fin 3) 1` normalized
+a valid loop with endpoints `paramPoint a 0` to one with endpoints
+`paramPoint a 1`. Its printed normal form failed replay with `PATH_END`.
+
+`field_transport_boundary` now restricts direct constructor rebuilding to
+boundaries whose faces use constructor interval fields and whose branches
+are recursive fields. Other path constructors retain opaque transport
+until a general boundary correction is implemented. Point constructors,
+`squash1` and formal compositions retain their S4b reductions.
+
+The new C case checks the parameter-dependent boundary through printing,
+rechecking and conversion. It passes with the base evaluator, fails on
+the original staged evaluator and passes with the fix. `make check` and
+the clang pass are green; path regressions are now 41, with 0 failures.

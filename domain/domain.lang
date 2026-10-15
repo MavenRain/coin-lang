@@ -9,6 +9,10 @@ family Lot (size : Nat) := makeLot (lotPrice : Nat)
 -- The circle, a higher inductive family (S4a, R1 (a)). The path
 -- constructor loop goes from base to base.
 family S1 := base | loop (i : I) [ ~i -> base, i -> base ]
+-- The propositional truncation (S4b, R5 (a)): squash1 is a path between
+-- any two points, so the squash1 fold case has the type isProp RES. A
+-- field name is a core name (rule R4), so the names have a family prefix.
+family Trunc1 (A : Type 0) := trunc1 (truncOf : A) | squash1 (squashFrom : Trunc1 A) (squashTo : Trunc1 A) (i : I) [ ~i -> squashFrom, i -> squashTo ]
 
 def lineTotal : (item : Item) -> Nat :=
   fun (item : Item) => natMul (itemPrice item) (itemCount item)
@@ -46,6 +50,12 @@ def trans : (A : Type 0) -> (x : A) -> (y : A) -> (z : A) -> Path A x y -> Path 
 -- of the fiber path. The squares are inline, with j flipped.
 def isContr : (A : Type 0) -> Type 0 :=
   fun (A : Type 0) => Sigma (c : A) ((x : A) -> Path A c x)
+-- Propositions and sets (S4b): the squash1 fold case has the type
+-- isProp RES, the squash0 and quotSquash fold cases the type isSet RES.
+def isProp : (A : Type 0) -> Type 0 :=
+  fun (A : Type 0) => (x : A) -> (y : A) -> Path A x y
+def isSet : (A : Type 0) -> Type 0 :=
+  fun (A : Type 0) => (x : A) -> (y : A) -> isProp (Path A x y)
 def fiber : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> (y : B) -> Type 0 :=
   fun (A : Type 0) => fun (B : Type 0) => fun (f : A -> B) => fun (y : B) => Sigma (x : A) (Path B (f x) y)
 def isEquiv : (A : Type 0) -> (B : Type 0) -> (f : A -> B) -> Type 0 :=

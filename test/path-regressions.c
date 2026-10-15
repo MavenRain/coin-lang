@@ -126,7 +126,7 @@ static int system_conversion(void) {
   return ok;
 }
 
-static int roundtrip(const char *label, const char *source) {
+static int domain_roundtrip(const char *label, const char *domain, const char *source) {
   Arena arena;
   Machine m, replay;
   Diag diag;
@@ -134,14 +134,14 @@ static int roundtrip(const char *label, const char *source) {
   int ok;
   uint32_t index;
   arena_init(&arena, (size_t)128 << 20);
-  ok = checked(&arena, &m, &diag, source);
+  ok = domain_checked(&arena, &m, &diag, domain, source);
   index = ok ? m.def_count - 1u : 0u;
   if (ok)
     ok = value_print(&m, NULL, 0, m.defs[index].type, type, sizeof type)
       && value_print(&m, NULL, 0, def_value(&m, index), value, sizeof value);
   if (ok) {
     snprintf(program, sizeof program, "def replay : %s := %s\n", type, value);
-    ok = checked(&arena, &replay, &diag, program);
+    ok = domain_checked(&arena, &replay, &diag, domain, program);
     if (!ok) fprintf(stderr, "%s\n", program);
   }
   if (ok)
@@ -153,6 +153,10 @@ static int roundtrip(const char *label, const char *source) {
   }
   arena_release(&arena);
   return ok;
+}
+
+static int roundtrip(const char *label, const char *source) {
+  return domain_roundtrip(label, "", source);
 }
 
 static int print_refused(const char *label, const char *source) {
@@ -312,6 +316,21 @@ int main(void) {
     "  transp (fun (i : I) => code y (loop i)) i0 (fun (_ : I) => y)\n"
     "def p : PathP (fun (j : I) => Path S1 (loop (j /\\ ~j)) (loop (j /\\ ~j)))\n"
     "  (transportSelf base) (transportSelf base) := fun (j : I) => transportSelf (loop (j /\\ ~j))\n");
+  failed += !roundtrip("transport of a formal hcomp at Trunc1 along a parameter line",
+    "def original : (A : Type 0) -> (B : Type 0) -> (p : Path (Type 0) A B) -> (a : A) -> (b : A) ->\n"
+    "  Path (Trunc1 B) (transp (fun (i : I) => Trunc1 (p @ i)) i0 (trunc1 A a)) (transp (fun (i : I) => Trunc1 (p @ i)) i0 (trunc1 A a)) :=\n"
+    "  fun (A : Type 0) => fun (B : Type 0) => fun (p : Path (Type 0) A B) => fun (a : A) => fun (b : A) => fun (j : I) =>\n"
+    "  transp (fun (i : I) => Trunc1 (p @ i)) i0 (hcomp (Trunc1 A) (~j \\/ j)\n"
+    "    (fun (i : I) => [ ~j -> trunc1 A a, j -> squash1 A (trunc1 A b) (trunc1 A a) i ]) (squash1 A (trunc1 A a) (trunc1 A b) j))\n");
+  failed += !domain_roundtrip("transport preserves a parameter-dependent HIT boundary",
+    "family ParamHit (a : Trunc1 (Fin 3)) := paramPoint (paramValue : Trunc1 (Fin 3)) |\n"
+    "  paramLoop (i : I) [ ~i -> paramPoint a a, i -> paramPoint a a ]\n",
+    "def endpoint : ParamHit (trunc1 (Fin 3) 1) :=\n"
+    "  transp (fun (i : I) => ParamHit (squash1 (Fin 3) (trunc1 (Fin 3) 0) (trunc1 (Fin 3) 1) i)) i0\n"
+    "    (paramPoint (trunc1 (Fin 3) 0) (trunc1 (Fin 3) 0))\n"
+    "def original : Path (ParamHit (trunc1 (Fin 3) 1)) endpoint endpoint :=\n"
+    "  fun (j : I) => transp (fun (i : I) => ParamHit (squash1 (Fin 3) (trunc1 (Fin 3) 0) (trunc1 (Fin 3) 1) i)) i0\n"
+    "    (paramLoop (trunc1 (Fin 3) 0) j)\n");
   printf("path regressions: %d failed\n", failed);
   return failed != 0;
 }

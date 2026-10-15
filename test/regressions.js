@@ -108,11 +108,12 @@ try {
     refused(text + 'def empty : Option T10 := none', 'JSON_TYPE');
   });
 
-  test('domain fields cannot duplicate JSON keys or constructor names', () => {
+  test('domain fields cannot duplicate JSON keys or constructor names, or recurse at other parameters', () => {
     for (const domain of ['family R := makeR (f : Nat) (f : Nat)', 'family R := makeR (makeR : Nat)']) {
       refused('', 'REFUSE_NAME', domainCompiler(domain));
     }
     refused('', 'DOMAIN_FAMILY', domainCompiler('family R := makeR (tag : Nat) | stopR'));
+    refused('', 'DOMAIN_FAMILY', domainCompiler('family T (A : Type 0) := leafT (v : A) | nodeT (l : T Nat) (r : T A)'));
     const single = built('def r : R := makeR 7', domainCompiler('family R := makeR (tag : Nat)'));
     assert.deepEqual(single.instances[0].value, {tag: 7});
   });
