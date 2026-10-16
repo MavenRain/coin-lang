@@ -1,0 +1,1 @@
+def bad : (s : Equiv (Fin 3) (Fin 4)) -> (h : (w : Fin 3) -> Path (Fin 3) 0 0) -> Path (Rand (Fin 3)) (pack (finSetFin 3) (fun (x : Fin 3) => 0)) (pack (finSetFin 4) (fun (x : Fin 4) => 0)) := fun (s : Equiv (Fin 3) (Fin 4)) (h : (w : Fin 3) -> Path (Fin 3) 0 0) => couple (Fin 3) (finSetFin 3) (finSetFin 4) (fun (x : Fin 3) => 0) (fun (x : Fin 4) => 0) s h refl

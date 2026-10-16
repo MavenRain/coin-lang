@@ -54,3 +54,5 @@ finset bwd40 => pack 3 7
 rand pureAt => fun _ => 1
 rand sumAt => fun _ => 10
 rand sumSig => fun _ => 36
+couple coupleAt0 => 0
+couple unitCard => 3

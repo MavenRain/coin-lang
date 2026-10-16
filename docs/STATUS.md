@@ -1411,3 +1411,130 @@ came from a repo test, not from a compile error.
 | L4 | `carrierSum` gives 0 at a carrier that is not a literal (`return val_nat(m, 0);`) | C case "carrierSum stays stuck at a neutral carrier" only (the rest of the gate is GREEN) |
 | L5 | `Rand` JSON: the values payload-major (`pack j i`) | `FAIL build examples/rand.lang: the output differs from test/json/rand.json`; C case "Rand values table" |
 | L6 | `Rand` JSON: `coins` is the table length minus 1 | the JSON of `examples/rand.lang`; C case "Rand values table" |
+
+## S6b
+
+S6b (`couple`, the path rules and `randBind`: items 5 to 7 of the S6
+kickoff) is complete, STAGED until the USER commit (one commit for S6b,
+R15 (a)). The S6 rulings R1 to R15 are all (a). The S6a commit 14ebb60
+adds a USER fix to the staged S6a tree: `fin_add` uses `nat_blocked` on
+the right operand, with the C case "finAdd right Glue operand stays
+stuck". So each later C target is one more than the kickoff target
+(S6b 65, not 64).
+
+Item 5 (session 7): `domain/domain.lang` adds `couple : (T : Type 0) ->
+(Om : FinSet) -> (Om2 : FinSet) -> (f : El Om -> T) -> (g : El Om2 ->
+T) -> (s : Equiv (El Om) (El Om2)) -> (h : (w : El Om) -> Path T (f w)
+(g (witness s w))) -> (n : Path Nat (card Om) (card Om2)) -> Path (Rand
+T) (pack Om f) (pack Om2 g)` (R5 (a), R6 (a)). The carrier part is `ua`
+of `s`. The size part is `n`: the kit has no pigeonhole. The truncation
+part is `squash1` of two `transp` (the `sqOver` shape of
+`examples/finset.lang`). The map part is `uaArrow` of `h`.
+`examples/couple.lang`: `r3`, `rotR` (the identity on `Fin 3`),
+`coupleRot : (x : Fin 1) -> Path (Rand (Fin 3)) r3 rotR` (`s` is the
+rotation by 1, `h` is refl at each point, `n` is refl), and `coupleAt0`
+(0) and `coupleAt1` (2), payloads at `i0`. The check refusals
+`couple-size.lang` (sizes 3 and 4: `PATH_END`) and `couple-point.lang`
+(a wrong `g` at point 2: `FIN_CASE`). The eval `couple coupleAt0 => 0`.
+
+Item 6 (sessions 8 to 10): JSON rules 1 to 3 in `src/json.c` (R12 (a)).
+A `PathP` value holds its ends, so it cannot hold a Kan-tagged line.
+Thus `path_json` is now a wrapper: it makes the line of the `PathP` type
+a path abstraction and calls `path_rules(line, a, b, v)`. The order is
+rule 1, 2, 3, 5, 4, 6. Rule 1: the new `carrier_point` gives the point
+`k` of `Fin n` or of `Sigma (e : Fin a) (Fin b)` (witness-major, the
+`FinSet` order). Rule 2: `sigma_path_json` prints `{"witness": P0,
+"payload": P1}` through `path_sigma_part` in `eval.c` and the new closure
+tag `CLOS_PATH_SIGMA_COD`. Rule 3: `pi_path_json` prints `{"paths": [P0,
+...]}`, one path for each point of the domain at `i0`, through `pi_up`
+and `path_pi_point` in `eval.c` and the new tags `CLOS_PI_DOM_UP`,
+`CLOS_PATH_PI_COD` and `CLOS_PATH_PI_POINT` (`core.h`, `kan_apply`).
+Rules 2 and 3 apply only to a path abstraction: a neutral path goes to
+rules 5, 4 and 6. Tests: the C cases "Sigma path prints each component"
+(rule 2), "path of functions prints a table of paths" (rule 3 at a `ua`
+domain) and "ua table at a Sigma carrier" (rule 1 at `(e : Fin 2) * Fin
+3`), and the instance `coupleShape` in `examples/couple.lang` (rule 2:
+the rule 1 table `[1, 2, 0]` and a rule 3 table of 3 rule 6 terms).
+
+Item 7 (session 10): `randBind : (A B : Type 0) -> (r : Rand A) -> (k :
+A -> Rand B) -> isFinSet ((w : El (witness r)) * El (witness (k (payload
+r w)))) -> Rand B` (R3 (a)). The coin space is that Sigma with the proof
+of the caller. The map is `payload (k (payload r (witness p))) (payload
+p)`. The domain grows from 190 to 214 lines. `examples/couple.lang` adds
+the monad laws at literal instances (R4 (a)): `leftUnit`, `rightUnit`
+and `assocAt`. Each law is a `couple` with an `isoToEquiv` carrier map,
+`h` refl at each point and the size refl. Each `isFinSet` proof is a Pi
+def over `Fin 1`, because a top-level `isFinSet` refuses `JSON_TYPE`. The
+instances `bindUnit` and `bindPure` (`{"coins": 3, "values": [1, 2,
+0]}`), `unitCard` (3), `coin2` and `assocEnd` (1). The eval `couple
+unitCard => 3`.
+
+Gate: `make check` is GREEN at examples 23, parse 11, check 66, evals
+58, json 23, build refusals 4, regressions 6, printer 2, path
+regressions 65 C cases (0 failed). The clang `-Wswitch-enum` pass is
+clean. The dash scan is clean.
+
+Docs: `docs/PLAN.md` row 36 (R4), section 6 rules 1 to 3 and section 7
+(S6b done). `docs/host/README.md`: rule 1 at the Sigma carriers, the
+rows for rules 2 and 3, the rule 5 order, the `law` type in the
+`finCase` note and the S6 domain defs. `SPEC.md`: no change. `randBind`
+takes a proof that the kernel checks, so it adds no trust point.
+
+Deviations from the plan (the S6 kickoff sections 1.2, 2 and 4; the
+sessions 7 to 10 of the S6 HANDOFF give the probes):
+
+- `coupleRot` is a Pi def over `Fin 1` (the kickoff allows it). The
+  top-level `coupleRot : Path (Rand (Fin 3)) r3 rotR` stops with `OOM:
+  coupleRot: the arena limit is reached` (about 0.9 s). With rules 1 to
+  3, a top-level path in `Rand (Fin 3)`, the top-level `loopTop : Path
+  FinSet ...` and the witness of `coupleRot` at top level (a `Path
+  FinSet`) still stop with `OOM`. So the `OOM` is in the `Path FinSet`
+  part. The site is not located. The `Trunc1` part cannot be a top-level
+  instance (`JSON_TYPE`).
+- So there is no C case "Path FinSet loop builds" (moved from S6a). The
+  item stays open.
+- `couple-point.lang` gives `FIN_CASE: bad: the case 2 of Fin 3 fails:
+  PATH_END: the path at i1 is 0, but the type needs 2`, not `PATH_END`
+  first. `couple` declares the Pi type of `h`, so the finAll fallback
+  checks the inline `h` at each point. `PATH_END` is the inner cause.
+- GOLDEN CHANGE in `test/json/fin.json` (rule 3 comes before rule 5):
+  `law` was `{"refl": "fun k => finCase ..."}`, now `{"paths": [{"refl":
+  {"refl": 0}}, {"refl": {"refl": 1}}]}`. `law2` was a rule 6 term, now
+  `{"paths": [{"refl": 0}, {"refl": 1}]}`.
+- `assocL` and `assocR` are Pi defs: their carriers `TripL` and `TripR`
+  are not rule 1 carriers, so a top-level form gives `JSON_VALUE` (not
+  probed).
+- `examples/couple.lang` has more instances than the plan: `coupleAt1`,
+  `coupleShape`, `bindUnit`, `bindPure`, `coin2` and `assocEnd`. The
+  json count stays 23 (`couple.json` is one file).
+- L7 is a cover mutant: the domain does not check, so each example
+  fails. The first failing example is `examples/algebra.lang`, not
+  `examples/couple.lang`.
+- L8 makes rule 2 never fire. Rule 6 takes each path that rule 2 does
+  not take, so this is the planned "rule 2 after rule 6".
+
+Mutants: L7 to L9 ran by hand in session 10, one at a time (`sd -s` at
+one site, `make -B check`, then `build/path-regressions` under the
+mutant; `sd -s` back). The `shasum` of the file before and after each
+mutant is equal. Each kill came from a repo test, not from a compile
+error.
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| L7 | `couple`: `uaArrow` gets the reversed `h` (`fun w => fun j => (h w) @ (~j)`; the domain has no `sym` def) | each example (cover); the first is `examples/algebra.lang` (`PATH_END: couple: the path at i0 is g ((witness s) w), but the type needs f w`); path regressions 64 failed |
+| L8 | `path_rules`: rule 2 never fires (`0 &&` on the `VAL_SIGMA` test) | the JSON of `examples/couple.lang` (`coupleShape`); C cases "Sigma path prints each component" and "path of functions prints a table of paths" |
+| L9 | `pi_path_json`: the table in reverse order | the JSON of `examples/couple.lang` (`coupleShape`); C case "path of functions prints a table of paths" |
+
+### S6b staged review (2026-10-16)
+
+Two JSON defects are fixed: empty literal carriers now select rules 1
+and 3, and Sigma carriers are checked in full before either table rule
+applies. A carrier with a later non-literal fiber now uses the later
+path rules instead of emitting an incomplete finite table.
+
+Nine C regressions cover empty Fin and Sigma carriers, mixed finite and
+non-finite fibers, and dependent finite fibers of different sizes,
+including zero. Seven of these cases failed before the fix. `make check`
+passes with 74 C path cases (0 failed); the other gate counts remain
+23/11/66/58/23/4/6/2. The clang and dash checks pass. No test or CI
+requirements were weakened.

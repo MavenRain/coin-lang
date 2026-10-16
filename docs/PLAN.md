@@ -33,7 +33,7 @@ them as open items:
 |---|---|---|---|
 | Coin space | `Ω : FinSet` | `FinSet := Sigma (A : U) (isFinSet A)` and `isFinSet A := Sigma (n : Nat) (Trunc1 (Equiv A (Fin n)))` as built (R6 (a): the size outside the truncation; `card` is a projection). A library def, not a kernel primitive (O3). `El : FinSet -> U` is the first projection. | S5 |
 | Uniform random variable | `Σ (Ω : FinSet) (Ω → T)` | `Rand T := Sigma (Om : FinSet) (El Om -> T)`, a domain def in `Type 1` (`FinSet` is in `Type 1`, and the kit has no cumulativity; S6a, R1). The distribution of `(Om, f)` is the count of each fiber of `f`, divided by the size of `Om`. The count is a sum over the carrier: the builtin `carrierSum` (S6a, R7; a trust point, `SPEC.md` section 8). | S6 |
-| Monad | map and bind | `randPure x := (Fin 1, \_ -> x)`. `randMap` composes. The kit builtins `pure`, `map` and `bind` keep their names, so the `Rand` names start with `rand` (S6a, R2). `randBind` uses the Sigma of the coin spaces (O4) and takes the `isFinSet` proof of that Sigma as an argument (S6b, R3). The monad laws are paths made from `ua` of the Sigma unit and associativity equivalences. They are not conversions. | S6 |
+| Monad | map and bind | `randPure x := (Fin 1, \_ -> x)`. `randMap` composes. The kit builtins `pure`, `map` and `bind` keep their names, so the `Rand` names start with `rand` (S6a, R2). `randBind` uses the Sigma of the coin spaces (O4) and takes the `isFinSet` proof of that Sigma as an argument (S6b, R3). The monad laws are paths made from `ua` of the Sigma unit and associativity equivalences. They are not conversions. S6b checks the left unit, right unit and associativity laws at literal instances over `Fin 3` (`examples/couple.lang`, R4). | S6 |
 | Equivalence | `σ : Ω ≃ Ω'` | `Equiv A B := Sigma (f : A -> B) (isEquiv f)`, with `isEquiv f` as contractible fibers (the CTT library form). `isoToEquiv` makes an equivalence from two inverse maps. | S3 |
 | Univalence | a path from `(Ω, f)` to `(Ω', g)` | `ua : Equiv A B -> Path U A B` through Glue types. Transport along `ua e` computes to `e` by definition (uaβ). A path in `FinSet` is a path in `U` and a path over it in `isFinSet`, which is a proposition. | S3, S5 |
 | Bijective coupling | `g ∘ σ = f` | `couple s h : Path (Rand T) (Om, f) (Om', g)` for `s : Equiv (El Om) (El Om')` and `h : (w : El Om) -> Path T (f w) (g (s w))`. A library def from `ua`, `uaArrow` (the CTT lemma that turns pointwise paths into a path over `ua`) and Sigma paths. | S6 |
@@ -203,9 +203,16 @@ are new or change:
   the `FinSet` rule.
 - A path is never `null`. The writer uses the first rule that applies:
   1. a path in a universe with a finite end point:
-     `{"from": A, "to": B, "transport": table}`. For `ua s` the table is `s`;
-  2. a path in a Sigma type: one object for each component path;
-  3. a path in a function type with a finite domain: a table of paths;
+     `{"from": A, "to": B, "transport": table}`. For `ua s` the table is `s`.
+     The start point is `Fin n`, or `Sigma (e : Fin a) (Fin b)` with
+     literals (S6b), and the table is in the enumeration order of the
+     `FinSet` rule;
+  2. a path in a Sigma type: one object for each component path,
+     `{"witness": P0, "payload": P1}`, each by these rules (S6b);
+  3. a path in a function type whose domain at `i0` is a carrier of rule
+     1: a table of paths, `{"paths": [P0, ...]}`, one pointwise path for
+     each point of that domain, in the same order, each by these rules
+     (S6b);
   4. a path in a HIT: its constructor tree (`{"path": "loop", "args": []}`,
      `{"trunc": a}`, `{"hcomp": ...}`);
   5. a path whose body does not use its interval variable: `{"refl": v}`;
@@ -251,6 +258,12 @@ are new or change:
   the `Rand` JSON rule and `examples/rand.lang`. A Nat or Fin operation on
   a glue element stays stuck (the S5c INTERNAL, R13). The top-level `Path
   FinSet` loop stops with `OOM` at the JSON print, so it moves to S6b.
+  S6b (done): the domain defs `couple` (R5, R6) and `randBind` (R3: the
+  caller gives the `isFinSet` proof of the Sigma coin space); the monad
+  laws at literal instances (R4); JSON rule 1 at the Sigma carriers, rule
+  2 and rule 3 (R12); `examples/couple.lang`. A top-level `Path FinSet`
+  and a top-level path in `Rand T` still stop with `OOM` at the JSON
+  print, so `coupleRot` is a Pi def over `Fin 1`.
 - S7: the two HVZK examples of section 2 as instances: the real variable,
   the simulated variable and the path between them. Mutants: a wrong
   witness `w`, a wrong `s` and a non-bijective `s` must each give a check

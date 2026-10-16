@@ -71,8 +71,10 @@ starts again for each instance.
 | `Sigma (x : A) B` | `{"witness": w, "payload": p}`. The payload type is `B` at the witness. |
 | `FinSet` (`Sigma (A : Type 0) (isFinSet A)`), a `Fin a` or `Sigma (e : Fin a) (Fin b)` carrier and a `trunc1` point | `{"carrier": "A", "size": n, "index": [k0, ...]}`: the forward map of the equivalence at each point of the carrier, in enumeration order (`0 .. a-1`; `pack 0 0`, `pack 0 1`, .., `pack (a-1) (b-1)`). In `examples/finset.lang`, `fin3` gives `{"carrier": "Fin 3", "size": 3, "index": [0, 1, 2]}` and `prodFinSet11` the 121 numbers in order. An entry that does not compute to a number is refused (`JSON_VALUE`). Any other carrier is a type and is refused (`JSON_VALUE`). |
 | `Rand T` (`Sigma (Om : FinSet) (El Om -> T)`), a `Fin a` or `Sigma (e : Fin a) (Fin b)` carrier | `{"coins": n, "values": [v0, ...]}` (S6a): `n` is the number of points of the carrier, and `values` holds the JSON at `T` of the function at each point, in the enumeration order of the `FinSet` row. In `examples/rand.lang`, `r3` gives `{"coins": 3, "values": [1, 2, 0]}` and `r2x3` (over `(e : Fin 2) * Fin 3`) gives `{"coins": 6, "values": [0, 1, 2, 10, 11, 12]}`. At any other carrier the `Sigma` row applies, and the build refuses the function (`JSON_VALUE`). |
-| `PathP (fun i => A) a b`, a body without `i` | `{"refl": a}` (rule 5). A point of a Pi type or a universe is its printed term, as a string. `Path A a b` is `PathP (fun _ => A) a b`. |
-| `PathP (fun _ => Type 0) A B`, with `A` = `Fin n` and a literal `n` | `{"from": "A", "to": "B", "transport": [t0, ...]}` (rule 1, before rules 5 and 6). `tk` is the value in `B` of `transp (fun i => p @ i) i0 k`, for each `k` below `n`. For a `ua` line, for example `ua (Fin 3) (Fin 3) e`, the table is `witness e` at each `k`. For a line made by `hcomp` in `Type 0`, the table is the composite transport: `transTwoLoops` in `examples/univ.lang`, two `loopRot1` lines, gives `[2, 0, 1]`. When a table value does not compute to a number or a canonical value, rules 5 and 6 apply. |
+| `PathP (fun i => A) a b`, a body without `i` | `{"refl": a}` (rule 5, after rules 1, 2 and 3). A point of a Pi type or a universe is its printed term, as a string. `Path A a b` is `PathP (fun _ => A) a b`. |
+| `PathP (fun _ => Type 0) A B`, with `A` = `Fin n`, or `Sigma (e : Fin a) (Fin b)` (S6b), and literals | `{"from": "A", "to": "B", "transport": [t0, ...]}` (rule 1, before rules 5 and 6). `tk` is the value in `B` of `transp (fun i => p @ i) i0 k`, for each point `k` of `A`, in the enumeration order of the `FinSet` row. For a `ua` line, for example `ua (Fin 3) (Fin 3) e`, the table is `witness e` at each `k`. For a line made by `hcomp` in `Type 0`, the table is the composite transport: `transTwoLoops` in `examples/univ.lang`, two `loopRot1` lines, gives `[2, 0, 1]`. When a table value does not compute to a number or a canonical value, rules 5 and 6 apply. |
+| `PathP (fun i => Sigma (x : A i) (B i)) a b`, a path abstraction | `{"witness": P0, "payload": P1}` (rule 2, S6b, after rule 1, before rule 5): `P0` is the path of the first components and `P1` is the path of the second components over `P0`, each by these rules. A constant Sigma path prints by rule 2 too: `Path ((e : Fin 2) * Fin 3) (pack 1 2) (pack 1 2)` gives `{"witness": {"refl": 1}, "payload": {"refl": 2}}`. A path that is not a path abstraction goes to rules 5, 4 and 6. |
+| `PathP (fun i => (x : A i) -> B i x) f g`, a path abstraction, with `A i0` a carrier of rule 1 | `{"paths": [P0, ...]}` (rule 3, S6b, after rule 2, before rule 5): one path for each point `x` of `A i0`, in the order of rule 1. `Pk` goes from `f x` to `g` at the transport of `x` along the domain line, by these rules. In `test/json/fin.json`, `law2` gives `{"paths": [{"refl": 0}, {"refl": 1}]}`. In `examples/couple.lang`, `coupleShape` (a path in `(A : Type 0) * (A -> Fin 3)`) gives rule 2, with the rule 1 table `[1, 2, 0]` as the witness and a rule 3 table of 3 rule 6 terms as the payload. |
 | `Glue A phi sys`, with no true key | Refused (`JSON_VALUE`): a Glue element has no JSON form. A Glue type with a true key is its branch type `T`. |
 | `PathP (fun i => A) a b`, a body with `i` | `{"from": a, "to": b, "term": t}` (rule 6). `t` is the printed path term, as a string. A `transp` that does not compute stays in `t` as `transp (fun j => A) phi a`. An `hcomp` that does not compute stays in `t` as `hcomp A phi (fun i => [ k -> u, ... ]) u0`. |
 | `PathP (fun _ => F) a b`, `F` a family with a path constructor, a body with `i` | Rule 4 (after rules 1 and 5, before rule 6): the body at `i` as a tree. A path constructor whose last interval argument is `i` gives `{"path": "name", "args": [t, ...]}`, with a tree for each point field. A formal `hcomp` gives `{"hcomp": {"phi": "face", "base": t}}`, with the face printed and the base as a tree. When another part of the body mentions `i` (a point constructor, a field that is not of the family, or a constructor with 2 interval fields), rule 6 applies. In `examples/circle.lang`, `loopPath` gives `{"path": "loop", "args": []}`. |
@@ -81,6 +83,11 @@ starts again for each instance.
 | Any other family | `{"tag": "name", ...}` with the fields of that constructor |
 | A formal `hcomp` at a family with a path constructor | `{"hcomp": {"phi": "face", "base": t}}` |
 | A `trunc1` or `trunc0` point | `{"trunc": a}`, with `a` the JSON of the field. In `examples/trunc.lang`, `sq1` gives `{"path": "squash1", "args": [{"trunc": 0}, {"trunc": 1}]}`. |
+
+Rules 1 and 3 recognize literal carriers before enumerating them. Empty
+carriers give `"transport": []` or `"paths": []`. Every fiber of a Sigma
+carrier must be a literal `Fin`; otherwise the later path rules apply
+to the whole path, rather than printing a partial table.
 
 An indexed family uses the same rules. Its index is in `type` (for
 example `Lot 3`), not in `value`.
@@ -101,7 +108,7 @@ for each refusal.
 `langc eval` also refuses an incomplete normal form with `EVAL_PRINT`
 (a 65536-byte buffer and the same printer depth limit). A stuck finite case
 prints as `finCase n k c0 .. c(n-1)` (S5a, R12), so `eval` prints it and
-`build` emits it (`test/json/fin.json`, `law2`). A closed case that
+`build` emits it (`test/json/fin.json`, the type of `law`). A closed case that
 computes to a literal prints as the literal. In an argument position, a
 typed identity preserves the case result type so printed path and function
 cases can be checked again. The 64-argument application limit does not
@@ -196,7 +203,11 @@ constructors:
 executable at build time. `domain/README.md` tells how to replace it.
 It holds the equivalence library: `isContr`, `fiber`, `isEquiv`, `Equiv`,
 `idEquiv` and `isoToEquiv`, the univalence defs `ua` and `uaArrow`
-(see Glue), and the circle `S1` (see Higher inductive types). A program
+(see Glue), and the circle `S1` (see Higher inductive types). It also
+holds `Rand`, `randPure`, `randMap`, `randBind` and `couple` (S6).
+`randBind` takes the `isFinSet` proof of its Sigma coin space as an
+argument (R3), and `couple s h n` takes the size path `n` (R5): the kit
+has no pigeonhole. A program
 def cannot have the name of a domain constructor, for example `loop`
 (`REFUSE_NAME`). An `Equiv` value holds a function, so a
 program def of an `Equiv` type is refused by `langc build`

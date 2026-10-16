@@ -187,7 +187,12 @@ typedef enum {
   CLOS_LINE_MEET,      /* PLAM: j |-> L (i /\ j); args: L, i */
   /* S4 item 14. */
   CLOS_FOLD_PATH,      /* PLAM: k |-> fold (p @ k) with the cases and RES of F; args: p, a, b (the ends of p), F (a stuck fold); field: the family */
-  CLOS_FOLD_FACE       /* PLAM: k |-> fold (X at the first interval E, the second k) with the cases and RES of F; args: X, E, F (a stuck fold); field: the family */
+  CLOS_FOLD_FACE,      /* PLAM: k |-> fold (X at the first interval E, the second k) with the cases and RES of F; args: X, E, F (a stuck fold); field: the family */
+  /* S6b item 6. */
+  CLOS_PATH_SIGMA_COD, /* PLAM: i |-> B(i) (witness (p @ i)); args: L, p */
+  CLOS_PI_DOM_UP,      /* PLAM: j |-> the domain of L(r /\ j); args: L, r */
+  CLOS_PATH_PI_COD,    /* PLAM: j |-> B(j) (x moved up to A(j)); args: L, x */
+  CLOS_PATH_PI_POINT   /* PLAM: j |-> (p @ j) (x moved up to A(j)); args: L, p, x */
 } ClosTag;
 
 typedef struct Value Value;
@@ -341,6 +346,11 @@ const Value *eval_core(Machine *m, const Env *env, const Core *core);
 const Value *apply_value(Machine *m, const Value *fn, const Value *arg);
 /* transp LINE PHI BASE, for JSON rule 1 (S3b). LINE is a path value in U. */
 const Value *val_transp(Machine *m, const Value *line, const Value *phi, const Value *base);
+/* For JSON rule 2 (S6b): the component FIELD (0 the witness, 1 the
+   payload) of the path P from A to B over the Sigma line LINE (a PLAM).
+   OUT gets the component line, path, start and end. 0 on an error. */
+int path_sigma_part(Machine *m, const Value *line, const Value *p, const Value *a, const Value *b, uint32_t field, const Value **out);
+int path_pi_point(Machine *m, const Value *line, const Value *p, const Value *a, const Value *b, const Value *x, const Value **out);
 /* The body of a LAM, PI, SIGMA, PLAM or PATHP value at ARG. */
 const Value *closure_apply(Machine *m, const Value *binder, const Value *arg);
 /* 1 when A and B have the same normal form. LEVEL is the next free level. */

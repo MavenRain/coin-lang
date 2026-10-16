@@ -1,0 +1,77 @@
+-- Couplings (S6b, rulings R5 and R6 (a)). couple makes a path in Rand T
+-- from an equivalence of the coin spaces, a path at each point and the
+-- size path. r3 is the rotation x + 1 on Fin 3 and rotR is the identity
+-- on Fin 3. The rotation by 1 on the coin space couples them: at each
+-- point w, r3 at w and rotR at w + 1 are both w + 1, so h is refl.
+-- coupleRot is a Pi def, as finSetLoop in finset.lang: a top-level path
+-- in Rand T refuses the build (OOM in the FinSet part of the path).
+-- Its ends are r3 and rotR: coupleAt0 and coupleAt1 apply them at 2.
+-- coupleShape keeps the carrier and the map of coupleRot. It is a
+-- top-level path in a Sigma, so the build prints it by the path rules:
+-- the carrier is the ua table and the map is a table of paths.
+def r3 : Rand (Fin 3) := pack (finSetFin 3) (fun (x : Fin 3) => finAdd 3 x 1)
+def rotR : Rand (Fin 3) := pack (finSetFin 3) (fun (x : Fin 3) => x)
+def coupleRot : (x : Fin 1) -> Path (Rand (Fin 3)) r3 rotR := fun (x : Fin 1) => couple (Fin 3) (finSetFin 3) (finSetFin 3) (fun (x : Fin 3) => finAdd 3 x 1) (fun (x : Fin 3) => x) (isoToEquiv (Fin 3) (Fin 3) (fun (r : Fin 3) => finAdd 3 r 1) (fun (r : Fin 3) => finAdd 3 r 2) (fun (k : Fin 3) => refl) (fun (k : Fin 3) => refl)) (fun (w : Fin 3) => refl) refl
+def coupleAt0 : Fin 3 := payload ((coupleRot 0) @ i0) 2
+def coupleAt1 : Fin 3 := payload ((coupleRot 0) @ i1) 2
+def coupleShape : Path ((A : Type 0) * (A -> Fin 3)) (pack (Fin 3) (payload r3)) (pack (Fin 3) (payload rotR)) := fun (i : I) => pack (witness (witness ((coupleRot 0) @ i))) (payload ((coupleRot 0) @ i))
+-- The monad laws at literal instances (S6b item 7, ruling R4 (a)). Each
+-- law is a couple: the carrier equivalence (by isoToEquiv), a refl at
+-- each point and the size refl. randBind takes the isFinSet proof of its
+-- coin space: unitFS, runitFS, pairFS, tripLFS and tripRFS give it by
+-- finAll at the literal carriers. leftUnit binds randPure 1 into kRot,
+-- rightUnit binds r3 into randPure, assocAt compares the two orders of
+-- two binds of kAdd after coin2. unitCard is the size of the leftUnit
+-- coin space and assocEnd a value of assocR.
+def kRot : (a : Fin 3) -> Rand (Fin 3) := fun (a : Fin 3) => pack (finSetFin 3) (fun (w : Fin 3) => finAdd 3 w a)
+def Unit3 : Type 0 := (w : Fin 1) * Fin 3
+def ufwd : (p : Unit3) -> Fin 3 := fun (p : Unit3) => payload p
+def ubwd : (k : Fin 3) -> Unit3 := fun (k : Fin 3) => pack 0 k
+def usec : (k : Fin 3) -> Path (Fin 3) (ufwd (ubwd k)) k := fun (k : Fin 3) => refl
+def uretC : (w : Fin 1) -> (x : Fin 3) -> Path Unit3 (ubwd (ufwd (pack w x))) (pack w x) := fun (w : Fin 1) => fun (x : Fin 3) => refl
+def uret : (p : Unit3) -> Path Unit3 (ubwd (ufwd p)) p := fun (p : Unit3) => uretC (witness p) (payload p)
+def unitFS : (x : Fin 1) -> isFinSet Unit3 := fun (x : Fin 1) => pack 3 (trunc1 (Equiv Unit3 (Fin 3)) (isoToEquiv Unit3 (Fin 3) ufwd ubwd usec uret))
+def bindUnit : Rand (Fin 3) := randBind (Fin 3) (Fin 3) (randPure (Fin 3) 1) kRot (unitFS 0)
+def unitCard : Nat := card (witness bindUnit)
+def leftUnit : (x : Fin 1) -> Path (Rand (Fin 3)) bindUnit (kRot 1) := fun (x : Fin 1) => couple (Fin 3) (witness bindUnit) (finSetFin 3) (payload bindUnit) (fun (w : Fin 3) => finAdd 3 w 1) (isoToEquiv Unit3 (Fin 3) ufwd ubwd usec uret) (fun (w : Unit3) => refl) refl
+def Unit3R : Type 0 := (w : Fin 3) * Fin 1
+def rfwd : (p : Unit3R) -> Fin 3 := fun (p : Unit3R) => witness p
+def rbwd : (k : Fin 3) -> Unit3R := fun (k : Fin 3) => pack k 0
+def rsec : (k : Fin 3) -> Path (Fin 3) (rfwd (rbwd k)) k := fun (k : Fin 3) => refl
+def rretC : (w : Fin 3) -> (x : Fin 1) -> Path Unit3R (rbwd (rfwd (pack w x))) (pack w x) := fun (w : Fin 3) => fun (x : Fin 1) => refl
+def rret : (p : Unit3R) -> Path Unit3R (rbwd (rfwd p)) p := fun (p : Unit3R) => rretC (witness p) (payload p)
+def runitFS : (x : Fin 1) -> isFinSet Unit3R := fun (x : Fin 1) => pack 3 (trunc1 (Equiv Unit3R (Fin 3)) (isoToEquiv Unit3R (Fin 3) rfwd rbwd rsec rret))
+def bindPure : Rand (Fin 3) := randBind (Fin 3) (Fin 3) r3 (randPure (Fin 3)) (runitFS 0)
+def rightUnit : (x : Fin 1) -> Path (Rand (Fin 3)) bindPure r3 := fun (x : Fin 1) => couple (Fin 3) (witness bindPure) (finSetFin 3) (payload bindPure) (fun (w : Fin 3) => finAdd 3 w 1) (isoToEquiv Unit3R (Fin 3) rfwd rbwd rsec rret) (fun (w : Unit3R) => refl) refl
+def coin2 : Rand (Fin 2) := pack (finSetFin 2) (fun (w : Fin 2) => w)
+def kAdd : (a : Fin 2) -> Rand (Fin 2) := fun (a : Fin 2) => pack (finSetFin 2) (fun (w : Fin 2) => finAdd 2 w a)
+def Pair2 : Type 0 := (w : Fin 2) * Fin 2
+def lift4 : (x : Fin 2) -> Fin 4 := fun (x : Fin 2) => finCase 2 x 0 1
+def pfwd : (p : Pair2) -> Fin 4 := fun (p : Pair2) => finAdd 4 (finMul 4 (lift4 (witness p)) 2) (lift4 (payload p))
+def pbwd : (k : Fin 4) -> Pair2 := fun (k : Fin 4) => finCase 4 k (pack 0 0) (pack 0 1) (pack 1 0) (pack 1 1)
+def psec : (k : Fin 4) -> Path (Fin 4) (pfwd (pbwd k)) k := fun (k : Fin 4) => refl
+def pretC : (e : Fin 2) -> (x : Fin 2) -> Path Pair2 (pbwd (pfwd (pack e x))) (pack e x) := fun (e : Fin 2) => fun (x : Fin 2) => refl
+def pret : (p : Pair2) -> Path Pair2 (pbwd (pfwd p)) p := fun (p : Pair2) => pretC (witness p) (payload p)
+def pairFS : (x : Fin 1) -> isFinSet Pair2 := fun (x : Fin 1) => pack 4 (trunc1 (Equiv Pair2 (Fin 4)) (isoToEquiv Pair2 (Fin 4) pfwd pbwd psec pret))
+def TripL : Type 0 := (p : Pair2) * Fin 2
+def TripR : Type 0 := (w : Fin 2) * Pair2
+def lift8 : (x : Fin 2) -> Fin 8 := fun (x : Fin 2) => finCase 2 x 0 1
+def lfwd : (t : TripL) -> Fin 8 := fun (t : TripL) => finAdd 8 (finMul 8 (lift8 (witness (witness t))) 4) (finAdd 8 (finMul 8 (lift8 (payload (witness t))) 2) (lift8 (payload t)))
+def lbwd : (k : Fin 8) -> TripL := fun (k : Fin 8) => finCase 8 k (pack (pack 0 0) 0) (pack (pack 0 0) 1) (pack (pack 0 1) 0) (pack (pack 0 1) 1) (pack (pack 1 0) 0) (pack (pack 1 0) 1) (pack (pack 1 1) 0) (pack (pack 1 1) 1)
+def lsec : (k : Fin 8) -> Path (Fin 8) (lfwd (lbwd k)) k := fun (k : Fin 8) => refl
+def lretC : (a : Fin 2) -> (b : Fin 2) -> (c : Fin 2) -> Path TripL (lbwd (lfwd (pack (pack a b) c))) (pack (pack a b) c) := fun (a : Fin 2) => fun (b : Fin 2) => fun (c : Fin 2) => refl
+def lret : (t : TripL) -> Path TripL (lbwd (lfwd t)) t := fun (t : TripL) => lretC (witness (witness t)) (payload (witness t)) (payload t)
+def tripLFS : (x : Fin 1) -> isFinSet TripL := fun (x : Fin 1) => pack 8 (trunc1 (Equiv TripL (Fin 8)) (isoToEquiv TripL (Fin 8) lfwd lbwd lsec lret))
+def assocF : (t : TripL) -> TripR := fun (t : TripL) => pack (witness (witness t)) (pack (payload (witness t)) (payload t))
+def assocG : (t : TripR) -> TripL := fun (t : TripR) => pack (pack (witness t) (witness (payload t))) (payload (payload t))
+def assocSec : (t : TripR) -> Path TripR (assocF (assocG t)) t := fun (t : TripR) => refl
+def assocRet : (t : TripL) -> Path TripL (assocG (assocF t)) t := fun (t : TripL) => refl
+def rsec3 : (k : Fin 8) -> Path (Fin 8) (lfwd (assocG (assocF (lbwd k)))) k := fun (k : Fin 8) => refl
+def rretC3 : (a : Fin 2) -> (b : Fin 2) -> (c : Fin 2) -> Path TripR (assocF (lbwd (lfwd (assocG (pack a (pack b c)))))) (pack a (pack b c)) := fun (a : Fin 2) => fun (b : Fin 2) => fun (c : Fin 2) => refl
+def rret3 : (t : TripR) -> Path TripR (assocF (lbwd (lfwd (assocG t)))) t := fun (t : TripR) => rretC3 (witness t) (witness (payload t)) (payload (payload t))
+def tripRFS : (x : Fin 1) -> isFinSet TripR := fun (x : Fin 1) => pack 8 (trunc1 (Equiv TripR (Fin 8)) (isoToEquiv TripR (Fin 8) (fun (t : TripR) => lfwd (assocG t)) (fun (k : Fin 8) => assocF (lbwd k)) rsec3 rret3))
+def kAssoc : (a : Fin 2) -> Rand (Fin 2) := fun (a : Fin 2) => randBind (Fin 2) (Fin 2) (kAdd a) kAdd (pairFS 0)
+def assocL : (x : Fin 1) -> Rand (Fin 2) := fun (x : Fin 1) => randBind (Fin 2) (Fin 2) (randBind (Fin 2) (Fin 2) coin2 kAdd (pairFS 0)) kAdd (tripLFS 0)
+def assocR : (x : Fin 1) -> Rand (Fin 2) := fun (x : Fin 1) => randBind (Fin 2) (Fin 2) coin2 kAssoc (tripRFS 0)
+def assocAt : (x : Fin 1) -> Path (Rand (Fin 2)) (assocL 0) (assocR 0) := fun (x : Fin 1) => couple (Fin 2) (witness (assocL 0)) (witness (assocR 0)) (payload (assocL 0)) (payload (assocR 0)) (isoToEquiv TripL TripR assocF assocG assocSec assocRet) (fun (t : TripL) => refl) refl
+def assocEnd : Fin 2 := payload ((assocAt 0) @ i1) (pack 1 (pack 1 1))

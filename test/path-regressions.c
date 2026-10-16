@@ -456,6 +456,75 @@ int main(void) {
     "def r : Rand Nat := pack (pack C (pack 6 (trunc1 (Equiv C (Fin 6)) (isoToEquiv C (Fin 6) fwd bwd sec ret)))) "
     "(fun (p : C) => natAdd (natMul 10 (finVal 2 (witness p))) (finVal 3 (payload p)))\n",
     "\"value\":{\"coins\":6,\"values\":[0,1,2,10,11,12]}");
+  /* S6b item 6, rule 2: the components 1 and 2 are different, so each
+     part must come from its own component path. */
+  failed += !json_contains("Sigma path prints each component",
+    "def p : Path ((e : Fin 2) * Fin 3) (pack 1 2) (pack 1 2) := refl\n",
+    "\"value\":{\"witness\":{\"refl\":1},\"payload\":{\"refl\":2}}");
+  /* S6b item 6, rule 3 at a ua domain: the pointwise path at x goes from
+     f x to g (s x), so the table starts at x = 0 with 1 (asymmetric). */
+  failed += !json_contains("path of functions prints a table of paths",
+    "def l : Path (Type 0) (Fin 3) (Fin 3) := ua (Fin 3) (Fin 3) (isoToEquiv (Fin 3) (Fin 3) (fun (r : Fin 3) => finAdd 3 r 1) (fun (r : Fin 3) => finAdd 3 r 2) (fun (k : Fin 3) => refl) (fun (k : Fin 3) => refl))\n"
+    "def q : (z : Fin 1) -> PathP (fun (i : I) => (l @ i) -> Fin 3) (fun (x : Fin 3) => finAdd 3 x 1) (fun (x : Fin 3) => x) := "
+    "fun (z : Fin 1) => uaArrow (Fin 3) (Fin 3) (Fin 3) (isoToEquiv (Fin 3) (Fin 3) (fun (r : Fin 3) => finAdd 3 r 1) (fun (r : Fin 3) => finAdd 3 r 2) (fun (k : Fin 3) => refl) (fun (k : Fin 3) => refl)) "
+    "(fun (x : Fin 3) => finAdd 3 x 1) (fun (x : Fin 3) => x) (fun (w : Fin 3) => refl)\n"
+    "def p : Path ((A : Type 0) * (A -> Fin 3)) (pack (Fin 3) (fun (x : Fin 3) => finAdd 3 x 1)) (pack (Fin 3) (fun (x : Fin 3) => x)) := "
+    "fun (i : I) => pack (l @ i) ((q 0) @ i)\n",
+    "\"payload\":{\"paths\":[{\"from\":1,\"to\":1,\"term\":");
+  /* S6b item 6, rule 1 at the Sigma carrier: a payload-major order gives
+     [0,3,1,4,2,5]. */
+  failed += !json_contains("ua table at a Sigma carrier",
+    "def C : Type 0 := (e : Fin 2) * Fin 3\n"
+    "def lift : (x : Fin 3) -> Fin 6 := fun (x : Fin 3) => finCase 3 x 0 1 2\n"
+    "def fwd : (p : C) -> Fin 6 := fun (p : C) => finCase 2 (witness p) (lift (payload p)) (finAdd 6 (lift (payload p)) 3)\n"
+    "def bwd : (k : Fin 6) -> C := fun (k : Fin 6) => finCase 6 k (pack 0 0) (pack 0 1) (pack 0 2) (pack 1 0) (pack 1 1) (pack 1 2)\n"
+    "def sec : (k : Fin 6) -> Path (Fin 6) (fwd (bwd k)) k := fun (k : Fin 6) => refl\n"
+    "def retC : (e : Fin 2) -> (x : Fin 3) -> Path C (bwd (fwd (pack e x))) (pack e x) := fun (e : Fin 2) => fun (x : Fin 3) => refl\n"
+    "def ret : (p : C) -> Path C (bwd (fwd p)) p := fun (p : C) => retC (witness p) (payload p)\n"
+    "def u : Path (Type 0) C (Fin 6) := ua C (Fin 6) (isoToEquiv C (Fin 6) fwd bwd sec ret)\n",
+    "\"value\":{\"from\":\"Sigma (e : Fin 2) (Fin 3)\",\"to\":\"Fin 6\",\"transport\":[0,1,2,3,4,5]}");
+  /* Empty literal carriers still select the table rules. */
+  failed += !json_contains("empty Fin universe path prints an empty table",
+    "def p : Path (Type 0) (Fin 0) (Fin 0) := refl\n",
+    "\"value\":{\"from\":\"Fin 0\",\"to\":\"Fin 0\",\"transport\":[]}");
+  failed += !json_contains("empty Sigma base prints an empty transport table",
+    "def C : Type 0 := (e : Fin 0) * Fin 2\n"
+    "def p : Path (Type 0) C C := refl\n",
+    "\"transport\":[]}");
+  failed += !json_contains("empty Sigma fibers print an empty transport table",
+    "def C : Type 0 := (e : Fin 2) * Fin 0\n"
+    "def p : Path (Type 0) C C := refl\n",
+    "\"transport\":[]}");
+  failed += !json_contains("path of functions on Fin zero prints an empty table",
+    "def f : Fin 0 -> Nat := fun (x : Fin 0) => 0\n"
+    "def p : Path (Fin 0 -> Nat) f f := refl\n",
+    "\"value\":{\"paths\":[]}");
+  failed += !json_contains("path of functions on an empty Sigma prints an empty table",
+    "def C : Type 0 := (e : Fin 2) * Fin 0\n"
+    "def f : C -> Nat := fun (x : C) => 0\n"
+    "def p : Path (C -> Nat) f f := refl\n",
+    "\"value\":{\"paths\":[]}");
+  /* Every Sigma fiber must be literal before either table rule applies.
+     The second fiber here is infinite, beyond the finite first fiber. */
+  failed += !json_contains("mixed Sigma carrier keeps the whole universe path",
+    "def C : Type 0 := (e : Fin 2) * (finCase 2 e (Fin 1) Nat)\n"
+    "def p : Path (Type 0) C C := refl\n",
+    "\"value\":{\"refl\":\"Sigma ");
+  failed += !json_contains("mixed Sigma function domain keeps the whole path",
+    "def C : Type 0 := (e : Fin 2) * (finCase 2 e (Fin 1) Nat)\n"
+    "def f : C -> Nat := fun (x : C) => 0\n"
+    "def p : Path (C -> Nat) f f := refl\n",
+    "\"value\":{\"refl\":\"fun x => 0\"}");
+  /* Literal dependent fibers can have different sizes, including zero. */
+  failed += !json_contains("dependent Sigma transport enumerates every fiber",
+    "def C : Type 0 := (e : Fin 3) * (finCase 3 e (Fin 1) (Fin 0) (Fin 2))\n"
+    "def p : Path (Type 0) C C := refl\n",
+    "\"transport\":[{\"witness\":0,\"payload\":0},{\"witness\":2,\"payload\":0},{\"witness\":2,\"payload\":1}]}");
+  failed += !json_contains("dependent Sigma function paths enumerate every fiber",
+    "def C : Type 0 := (e : Fin 3) * (finCase 3 e (Fin 1) (Fin 0) (Fin 2))\n"
+    "def f : C -> Nat := fun (x : C) => finVal 3 (witness x)\n"
+    "def p : Path (C -> Nat) f f := refl\n",
+    "\"value\":{\"paths\":[{\"refl\":0},{\"refl\":2},{\"refl\":2}]}");
   printf("path regressions: %d failed\n", failed);
   return failed != 0;
 }

@@ -1584,6 +1584,12 @@ static const Value *sigma_up(Machine *m, const Value *line, const Value *phi, co
   return transp(m, kan_closure(m, VAL_PLAM, CLOS_SIGMA_DOM, 0, 2, line, r, NULL), ival_join(m, phi, ival_neg(m, r)), u);
 }
 
+/* x(r) = transp (fun j => A (r /\ j)) (~r) x: X in the domain A(i0) of a
+   line of Pi types, moved up to A(r) (S6b rule 3). */
+static const Value *pi_up(Machine *m, const Value *line, const Value *x, const Value *r) {
+  return transp(m, kan_closure(m, VAL_PLAM, CLOS_PI_DOM_UP, 0, 2, line, r, NULL), ival_neg(m, r), x);
+}
+
 /* The type of the point field FIELD of the constructor INST at the
    parameters of the family value T and the values EARLIER of the fields
    before it (S4 items 11 and 13). The field type is over the parameters
@@ -1734,6 +1740,15 @@ static const Value *kan_apply(Machine *m, const Value *k, const Value *r) {
     if (a[2]->argc < 2u)
       return internal(m, "a folded face without its cases");
     return fold_family(m, k->field, a[2]->args, a[2]->argc - 2u, ctor_at2(m, a[0], a[1], r));
+  case CLOS_PATH_SIGMA_COD:
+    return closure_apply(m, line_former(m, line_at(m, a[0], r), VAL_SIGMA), sigma_part(m, line_at(m, a[1], r), 0));
+  case CLOS_PI_DOM_UP:
+    t = line_former(m, line_at(m, a[0], ival_meet(m, a[1], r)), VAL_PI);
+    return t == NULL ? NULL : t->dom;
+  case CLOS_PATH_PI_COD:
+    return closure_apply(m, line_former(m, line_at(m, a[0], r), VAL_PI), pi_up(m, a[0], a[1], r));
+  case CLOS_PATH_PI_POINT:
+    return apply_value(m, line_at(m, a[1], r), pi_up(m, a[0], a[2], r));
   case CLOS_CORE:
     break;
   }
@@ -1991,6 +2006,27 @@ static const Value *transp(Machine *m, const Value *line, const Value *phi, cons
   }
   /* Rule 9: a neutral line. */
   return transp_stuck(m, line, face, base);
+}
+
+int path_sigma_part(Machine *m, const Value *line, const Value *p, const Value *a, const Value *b, uint32_t field, const Value **out) {
+  out[0] = field == 0u ? kan_closure(m, VAL_PLAM, CLOS_SIGMA_DOM, 0, 2, line, val_iend(m, 1), NULL)
+    : kan_closure(m, VAL_PLAM, CLOS_PATH_SIGMA_COD, 0, 2, line, p, NULL);
+  out[1] = kan_closure(m, VAL_PLAM, CLOS_SYS_SIGMA, field, 1, p, NULL, NULL);
+  out[2] = sigma_part(m, a, field);
+  out[3] = sigma_part(m, b, field);
+  return out[0] != NULL && out[1] != NULL && out[2] != NULL && out[3] != NULL && !m->diag->set;
+}
+
+/* The pointwise path at X of a path P of functions (a PLAM) over the
+   line LINE of Pi types from A to B: X is a point of the domain at i0.
+   OUT: the line j |-> B(j) (x(j)), the path j |-> (p @ j) (x(j)), and its
+   ends A x and B (x(i1)), with x(j) = pi_up (S6b rule 3). */
+int path_pi_point(Machine *m, const Value *line, const Value *p, const Value *a, const Value *b, const Value *x, const Value **out) {
+  out[0] = kan_closure(m, VAL_PLAM, CLOS_PATH_PI_COD, 0, 2, line, x, NULL);
+  out[1] = kan_closure(m, VAL_PLAM, CLOS_PATH_PI_POINT, 0, 3, line, p, x);
+  out[2] = apply_value(m, a, x);
+  out[3] = apply_value(m, b, pi_up(m, line, x, val_iend(m, 1)));
+  return out[0] != NULL && out[1] != NULL && out[2] != NULL && out[3] != NULL && !m->diag->set;
 }
 
 const Value *val_transp(Machine *m, const Value *line, const Value *phi, const Value *base) {

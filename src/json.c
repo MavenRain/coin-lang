@@ -557,27 +557,75 @@ static int is_ready(const Value *v) {
     || v->kind == VAL_SIGMA || v->kind == VAL_PATHP;
 }
 
-/* Rule 1 (R9 (a)): a path in a universe whose end at i0 is Fin n (a
-   literal n) is the table of transp (fun i => p @ i) i0 k for each k < n.
-   *DONE is 0 when the rule does not apply, or when a table value is not
-   ready: then the output goes back to MARK and rules 5 and 6 apply. */
-static int table_json(Out *o, const Value *type, const Value *v, int *done) {
+/* 1 for a literal carrier, 0 for an unsupported type, -1 on an error.
+   Check every Sigma fiber before printing a table, including empty
+   carriers whose enumeration has no first point. */
+static int carrier_literal(Machine *m, const Value *a) {
+  uint64_t i;
+  if (fin_literal(a))
+    return 1;
+  if (a->kind != VAL_SIGMA || !fin_literal(a->dom))
+    return 0;
+  for (i = 0; i < a->dom->args[0]->nat; i++) {
+    const Value *b = closure_apply(m, a, val_nat(m, i));
+    if (b == NULL || m->diag->set)
+      return -1;
+    if (!fin_literal(b))
+      return 0;
+  }
+  return 1;
+}
+
+/* The point K of a literal carrier A: Fin n, or Sigma (e : Fin a) (Fin b)
+   in the witness-major order of the FinSet rule. NULL past the last point
+   and at each other carrier. */
+static const Value *carrier_point(Machine *m, const Value *a, uint64_t k) {
+  uint64_t i;
+  if (fin_literal(a))
+    return k < a->args[0]->nat ? val_nat(m, k) : NULL;
+  if (a->kind != VAL_SIGMA || !fin_literal(a->dom))
+    return NULL;
+  for (i = 0; i < a->dom->args[0]->nat; i++) {
+    const Value *b = closure_apply(m, a, val_nat(m, i));
+    const Value *pair[2];
+    if (b == NULL || !fin_literal(b))
+      return NULL;
+    if (k < b->args[0]->nat) {
+      pair[0] = val_nat(m, i);
+      pair[1] = val_nat(m, k);
+      return val_op(m, VAL_OP, OP_PACK, 0, 0, pair, 2);
+    }
+    k -= b->args[0]->nat;
+  }
+  return NULL;
+}
+
+/* Rule 1 (R9 (a), S6b R12 (a)): a path in a universe (the line LINE, ends
+   A and B) whose end A is a literal carrier (carrier_point) is the table
+   of transp (fun i => p @ i) i0 x for each point x of A. *DONE is 0 when
+   the rule does not apply, or when a table value is not ready: then the
+   output goes back to MARK and the next rules apply. */
+static int table_json(Out *o, const Value *line, const Value *a, const Value *b, const Value *v, int *done) {
   Machine *m = o->m;
-  const Value *a = type->args[0];
-  const Value *from = closure_apply(m, type, val_iend(m, 0));
-  const Value *to = closure_apply(m, type, val_iend(m, 1));
+  const Value *from = closure_apply(m, line, val_iend(m, 0));
+  const Value *to = closure_apply(m, line, val_iend(m, 1));
+  const Value *x;
   size_t mark = o->len;
   uint64_t k;
+  int literal;
   *done = 0;
   if (from == NULL || to == NULL)
     return 0;
-  if (from->kind != VAL_UNIV || !val_is(a, OP_FIN) || a->args[0]->kind != VAL_NAT)
+  if (from->kind != VAL_UNIV)
     return 1;
+  literal = carrier_literal(m, a);
+  if (literal <= 0)
+    return literal == 0 && !m->diag->set;
   if (!put_text(o, "{\"from\":") || !point_json(o, from, a) || !put_text(o, ",\"to\":")
-      || !point_json(o, to, type->args[1]) || !put_text(o, ",\"transport\":["))
+      || !point_json(o, to, b) || !put_text(o, ",\"transport\":["))
     return 0;
-  for (k = 0; k < a->args[0]->nat; k++) {
-    const Value *vk = val_transp(m, v, val_iend(m, 0), val_nat(m, k));
+  for (k = 0; (x = carrier_point(m, a, k)) != NULL; k++) {
+    const Value *vk = val_transp(m, v, val_iend(m, 0), x);
     if (vk == NULL || m->diag->set)
       return 0;
     if (!is_ready(vk)) {
@@ -585,11 +633,11 @@ static int table_json(Out *o, const Value *type, const Value *v, int *done) {
       o->data[mark] = '\0';
       return 1;
     }
-    if ((k > 0 && !put_text(o, ",")) || !point_json(o, type->args[1], vk))
+    if ((k > 0 && !put_text(o, ",")) || !point_json(o, b, vk))
       return 0;
   }
   *done = 1;
-  return put_text(o, "]}");
+  return !m->diag->set && put_text(o, "]}");
 }
 
 /* 1 when TY is a family with a path constructor (a HIT). */
@@ -684,46 +732,101 @@ static int hit_tree(Out *o, const Value *ty, const Value *x, int *done) {
   return put_text(o, "]}");
 }
 
-/* Rule 1 first (table_json). Rule 5: the body at a fresh interval variable
-   does not mention it, so the path is refl of its point. Rule 4 (hit_tree):
-   a path at a HIT type. Rule 6: else the ends and the printed normal form of
-   the path. An instance is closed, so the fresh level is 0. */
-static int path_json(Out *o, const Value *type, const Value *v) {
+static int path_rules(Out *o, const Value *line, const Value *a, const Value *b, const Value *v);
+
+/* Rule 2 (S6b R12 (a)): a path V in a Sigma type is one object for each
+   component path, {"witness": P0, "payload": P1}, each printed by the
+   path rules over its own line. */
+static int sigma_path_json(Out *o, const Value *line, const Value *a, const Value *b, const Value *v) {
+  const Value *part[4];
+  uint32_t f;
+  for (f = 0; f < 2u; f++)
+    if (!put_text(o, f == 0u ? "{\"witness\":" : ",\"payload\":") || !path_sigma_part(o->m, line, v, a, b, f, part)
+        || !path_rules(o, part[0], part[2], part[3], part[1]))
+      return 0;
+  return put_text(o, "}");
+}
+
+/* Rule 3 (S6b R12 (a)): a path V of functions whose domain DOM at i0 is a
+   literal carrier is the table {"paths": [P0, ...]} of the pointwise
+   paths (path_pi_point), one for each point of DOM in the carrier_point
+   order, each printed by the path rules over its own line. */
+static int pi_path_json(Out *o, const Value *line, const Value *a, const Value *b, const Value *v, const Value *dom) {
+  const Value *part[4];
+  const Value *x;
+  uint64_t k;
+  if (!put_text(o, "{\"paths\":["))
+    return 0;
+  for (k = 0; (x = carrier_point(o->m, dom, k)) != NULL; k++)
+    if ((k > 0 && !put_text(o, ",")) || !path_pi_point(o->m, line, v, a, b, x, part)
+        || !path_rules(o, part[0], part[2], part[3], part[1]))
+      return 0;
+  return !o->m->diag->set && put_text(o, "]}");
+}
+
+/* The path rules in order 1, 2, 3, 5, 4, 6 at the line LINE (a PLAM in a
+   universe) from A to B. Rule 1 first (table_json). Rule 2
+   (sigma_path_json): a path in a Sigma type. Rule 3 (pi_path_json): a path
+   of functions on a literal carrier at i0. Rule 5: the body at a fresh
+   interval variable does not mention it, so the path is refl of its
+   point. Rule 4 (hit_tree): a path at a HIT type. Rule 6: else the ends
+   and the printed normal form of the path. An instance is closed, so the
+   fresh level is 0. */
+static int path_rules(Out *o, const Value *line, const Value *a, const Value *b, const Value *v) {
   Machine *m = o->m;
-  const Value *a = type->args[0];
-  const Value *b = type->args[1];
   const Value *at;
-  const Value *line;
+  const Value *head;
+  const Value *start;
   const Core *body;
   const Value *point;
   size_t mark;
   int done;
-  if (!table_json(o, type, v, &done))
+  if (!table_json(o, line, a, b, v, &done))
     return 0;
   if (done)
     return 1;
+  head = closure_apply(m, line, val_ivar(m, 0u));
+  if (head == NULL)
+    return 0;
+  if (head->kind == VAL_SIGMA && v->kind == VAL_PLAM)
+    return sigma_path_json(o, line, a, b, v);
+  if (head->kind == VAL_PI && v->kind == VAL_PLAM) {
+    start = closure_apply(m, line, val_iend(m, 0));
+    if (start == NULL)
+      return 0;
+    if (start->kind == VAL_PI) {
+      int literal = carrier_literal(m, start->dom);
+      if (literal < 0)
+        return 0;
+      if (literal)
+        return pi_path_json(o, line, a, b, v, start->dom);
+    }
+  }
   at = path_apply(m, v, val_ivar(m, 0u), a, b);
   body = quote_value(m, 1u, at);
   if (body == NULL)
     return 0;
   point = path_apply(m, v, val_iend(m, 0), a, b);
   if (!mentions(body, 0u))
-    return put_text(o, "{\"refl\":") && point_json(o, closure_apply(m, type, val_iend(m, 0)), point) && put_text(o, "}");
-  line = closure_apply(m, type, val_ivar(m, 0u));
-  if (line == NULL)
-    return 0;
-  if (hit_family(m, line)) {
+    return put_text(o, "{\"refl\":") && point_json(o, closure_apply(m, line, val_iend(m, 0)), point) && put_text(o, "}");
+  if (hit_family(m, head)) {
     mark = o->len;
-    if (!hit_tree(o, line, at, &done))
+    if (!hit_tree(o, head, at, &done))
       return 0;
     if (done)
       return 1;
     o->len = mark;
     o->data[mark] = '\0';
   }
-  return put_text(o, "{\"from\":") && point_json(o, closure_apply(m, type, val_iend(m, 0)), a)
-    && put_text(o, ",\"to\":") && point_json(o, closure_apply(m, type, val_iend(m, 1)), b)
+  return put_text(o, "{\"from\":") && point_json(o, closure_apply(m, line, val_iend(m, 0)), a)
+    && put_text(o, ",\"to\":") && point_json(o, closure_apply(m, line, val_iend(m, 1)), b)
     && put_text(o, ",\"term\":") && printed_json(o, v) && put_text(o, "}");
+}
+
+/* A PathP type holds its line as a closure: the rules take it as a PLAM. */
+static int path_json(Out *o, const Value *type, const Value *v) {
+  const Value *line = val_closure(o->m, VAL_PLAM, type->name, NULL, type->env, type->body);
+  return line != NULL && path_rules(o, line, type->args[0], type->args[1], v);
 }
 
 static int typed_json(Out *o, const Value *type, const Value *v) {

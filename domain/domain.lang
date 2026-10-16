@@ -188,3 +188,27 @@ def Rand : (T : Type 0) -> Type 1 := fun (T : Type 0) => Sigma (Om : FinSet) (El
 def randPure : (T : Type 0) -> T -> Rand T := fun (T : Type 0) (x : T) => pack (finSetFin 1) (fun (w : Fin 1) => x)
 def randMap : (A : Type 0) -> (B : Type 0) -> (A -> B) -> Rand A -> Rand B :=
   fun (A : Type 0) (B : Type 0) (f : A -> B) (r : Rand A) => pack (witness r) (fun (w : El (witness r)) => f (payload r w))
+-- Bind (S6b item 7, ruling R3 (a)). The coin space of randBind r k is the
+-- Sigma of the coins w of r and the coins of k at the value of r at w.
+-- The kit has no general proof that this Sigma is a finite set, so the
+-- caller gives the isFinSet proof (at literal carriers by finAll, as
+-- prodFinSet in finset.lang).
+def randBind : (A : Type 0) -> (B : Type 0) -> (r : Rand A) -> (k : A -> Rand B) -> isFinSet ((w : El (witness r)) * El (witness (k (payload r w)))) -> Rand B :=
+  fun (A : Type 0) (B : Type 0) (r : Rand A) (k : A -> Rand B) (fs : isFinSet ((w : El (witness r)) * El (witness (k (payload r w))))) =>
+    pack (pack ((w : El (witness r)) * El (witness (k (payload r w)))) fs) (fun (p : (w : El (witness r)) * El (witness (k (payload r w)))) => payload (k (payload r (witness p))) (payload p))
+-- Couplings (S6b item 5, rulings R5 and R6 (a)). An equivalence s of the
+-- coin spaces and a path h from f w to g (witness s w) at each point w
+-- give a path in Rand T. The carrier part is ua of s and the map part is
+-- uaArrow of h. The size part is the size path n: the kit has no
+-- pigeonhole, so couple takes n (refl at equal literal sizes). The
+-- truncation part is squash1 of two transp, as sqOver in finset.lang.
+def couple : (T : Type 0) -> (Om : FinSet) -> (Om2 : FinSet) -> (f : El Om -> T) -> (g : El Om2 -> T) -> (s : Equiv (El Om) (El Om2)) ->
+  (h : (w : El Om) -> Path T (f w) (g (witness s w))) -> (n : Path Nat (card Om) (card Om2)) -> Path (Rand T) (pack Om f) (pack Om2 g) :=
+  fun (T : Type 0) (Om : FinSet) (Om2 : FinSet) (f : El Om -> T) (g : El Om2 -> T) (s : Equiv (El Om) (El Om2)) =>
+  fun (h : (w : El Om) -> Path T (f w) (g (witness s w))) (n : Path Nat (card Om) (card Om2)) =>
+    fun (i : I) => pack (pack (ua (El Om) (El Om2) s @ i) (pack (n @ i)
+      (squash1 (Equiv (ua (El Om) (El Om2) s @ i) (Fin (n @ i)))
+        (transp (fun (j : I) => Trunc1 (Equiv (ua (El Om) (El Om2) s @ (i /\ j)) (Fin (n @ (i /\ j))))) (~i) (payload (payload Om)))
+        (transp (fun (j : I) => Trunc1 (Equiv (ua (El Om) (El Om2) s @ (i \/ ~j)) (Fin (n @ (i \/ ~j))))) i (payload (payload Om2)))
+        i)))
+      (uaArrow (El Om) (El Om2) T s f g h @ i)

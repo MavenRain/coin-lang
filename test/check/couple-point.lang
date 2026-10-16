@@ -1,0 +1,1 @@
+def bad : Path (Rand (Fin 3)) (pack (finSetFin 3) (fun (x : Fin 3) => finAdd 3 x 1)) (pack (finSetFin 3) (fun (x : Fin 3) => finCase 3 x 1 2 2)) := couple (Fin 3) (finSetFin 3) (finSetFin 3) (fun (x : Fin 3) => finAdd 3 x 1) (fun (x : Fin 3) => finCase 3 x 1 2 2) (idEquiv (Fin 3)) (fun (w : Fin 3) => refl) refl
