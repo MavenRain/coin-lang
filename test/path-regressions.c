@@ -182,6 +182,26 @@ static int json_contains(const char *label, const char *source, const char *expe
   return domain_json_contains(label, "", source, expected);
 }
 
+static int json_refuses(const char *label, const char *source, const char *code) {
+  Arena arena;
+  Machine m;
+  Diag diag;
+  const char *text = NULL;
+  size_t len = 0;
+  int ok;
+  arena_init(&arena, (size_t)128 << 20);
+  ok = checked(&arena, &m, &diag, source)
+    && !json_document(&m, &text, &len)
+    && diag.set && strcmp(diag.code, code) == 0;
+  if (!ok) {
+    fprintf(stderr, "FAIL %s: expected JSON refusal %s\n", label, code);
+    if (diag.set)
+      diag_print(&diag, stderr);
+  }
+  arena_release(&arena);
+  return ok;
+}
+
 int main(void) {
   int failed = 0;
   failed += !system_conversion();
@@ -368,6 +388,37 @@ int main(void) {
      the line fail with TYPE_MISMATCH at i0). */
   failed += !domain_roundtrip("decEqFin inr round-trips", "",
     "def d : Dec (Path (Fin 3) 0 1) := decEqFin 3 0 1\n");
+  /* S5c item 12 (J20 (a)): a FinSet value prints its index table, the
+     forward map at each point of the carrier in enumeration order. */
+  failed += !json_contains("FinSet index table",
+    "def fs : FinSet := finSetFin 3\n",
+    "\"carrier\":\"Fin 3\",\"size\":3,\"index\":[0,1,2]");
+  failed += !json_contains("empty FinSet index table",
+    "def fs : FinSet := finSetFin 0\n",
+    "\"carrier\":\"Fin 0\",\"size\":0,\"index\":[]");
+  failed += !json_contains("rotated FinSet index table",
+    "def fs : FinSet := pack (Fin 3) (pack 3 (trunc1 (Equiv (Fin 3) (Fin 3)) "
+    "(isoToEquiv (Fin 3) (Fin 3) (fun (r : Fin 3) => finAdd 3 r 1) "
+    "(fun (r : Fin 3) => finAdd 3 r 2) (fun (k : Fin 3) => refl) (fun (k : Fin 3) => refl))))\n",
+    "\"carrier\":\"Fin 3\",\"size\":3,\"index\":[1,2,0]");
+  /* The FinSet rule must compare the whole type before inspecting the
+     truncation point. These checked pairs have no matching equivalence. */
+  failed += !json_refuses("FinSet rejects a Nat table without equivalence",
+    "def bogus : Sigma (A : Type 0) (Sigma (n : Nat) (Trunc1 (Sigma (f : A -> Nat) Unit))) :=\n"
+    "pack (Fin 2) (pack 0 (trunc1 (Sigma (f : Fin 2 -> Nat) Unit) (pack (fun (x : Fin 2) => 999) unit)))\n",
+    "JSON_VALUE");
+  failed += !json_refuses("FinSet rejects a nonfunction witness",
+    "def bogus : Sigma (A : Type 0) (Sigma (n : Nat) (Trunc1 (Sigma (x : Nat) Unit))) :=\n"
+    "pack (Fin 2) (pack 0 (trunc1 (Sigma (x : Nat) Unit) (pack 999 unit)))\n",
+    "JSON_VALUE");
+  failed += !json_refuses("FinSet rejects a Fin table without equivalence",
+    "def bogus : Sigma (A : Type 0) (Sigma (n : Nat) (Trunc1 (Sigma (f : A -> Fin n) Unit))) :=\n"
+    "pack (Fin 2) (pack 1 (trunc1 (Sigma (f : Fin 2 -> Fin 1) Unit) (pack (fun (x : Fin 2) => 0) unit)))\n",
+    "JSON_VALUE");
+  failed += !json_refuses("FinSet equivalence must use the bound size",
+    "def bogus : Sigma (A : Type 0) (Sigma (n : Nat) (Trunc1 (Equiv A (Fin 2)))) :=\n"
+    "pack (Fin 2) (pack 0 (trunc1 (Equiv (Fin 2) (Fin 2)) (idEquiv (Fin 2))))\n",
+    "JSON_VALUE");
   printf("path regressions: %d failed\n", failed);
   return failed != 0;
 }

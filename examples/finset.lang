@@ -1,0 +1,46 @@
+-- Finite sets (S5c, rulings R6 to R8 (a), J20 (a)). A FinSet is a pack of a
+-- carrier and its isFinSet point: the size outside the truncation, then
+-- trunc1 of an equivalence with Fin n. `langc build` prints a FinSet as
+-- {"carrier": "A", "size": n, "index": [...]}: the forward map at each
+-- point of the carrier, in enumeration order. An Equiv, Trunc1 or isFinSet
+-- def is a Sigma instance that holds a function and refuses the build, so
+-- the equivalences stay inline in the FinSet values; fwd, bwd, sec and ret
+-- are Pi defs and do not emit.
+def fin3 : FinSet := finSetFin 3
+def card3 : Nat := card fin3
+-- The product (e : Fin 2) * Fin 24 and its equivalence to Fin 48. The
+-- retraction law is the curried finAll law under Sigma eta (J20 (a)).
+def Carrier : Type 0 := (e : Fin 2) * Fin 24
+def lift24 : (x : Fin 24) -> Fin 48 := fun (x : Fin 24) => finCase 24 x 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
+def fwd : (p : Carrier) -> Fin 48 := fun (p : Carrier) => finCase 2 (witness p) (lift24 (payload p)) (finAdd 48 (lift24 (payload p)) 24)
+def bwd : (k : Fin 48) -> Carrier := fun (k : Fin 48) => finCase 48 k (pack 0 0) (pack 0 1) (pack 0 2) (pack 0 3) (pack 0 4) (pack 0 5) (pack 0 6) (pack 0 7) (pack 0 8) (pack 0 9) (pack 0 10) (pack 0 11) (pack 0 12) (pack 0 13) (pack 0 14) (pack 0 15) (pack 0 16) (pack 0 17) (pack 0 18) (pack 0 19) (pack 0 20) (pack 0 21) (pack 0 22) (pack 0 23) (pack 1 0) (pack 1 1) (pack 1 2) (pack 1 3) (pack 1 4) (pack 1 5) (pack 1 6) (pack 1 7) (pack 1 8) (pack 1 9) (pack 1 10) (pack 1 11) (pack 1 12) (pack 1 13) (pack 1 14) (pack 1 15) (pack 1 16) (pack 1 17) (pack 1 18) (pack 1 19) (pack 1 20) (pack 1 21) (pack 1 22) (pack 1 23)
+def sec : (k : Fin 48) -> Path (Fin 48) (fwd (bwd k)) k := fun (k : Fin 48) => refl
+def retCurried : (e : Fin 2) -> (x : Fin 24) -> Path Carrier (bwd (fwd (pack e x))) (pack e x) := fun (e : Fin 2) => fun (x : Fin 24) => refl
+def retEta : (p : Carrier) -> Path Carrier (bwd (fwd p)) p := fun (p : Carrier) => retCurried (witness p) (payload p)
+def prodFinSet : FinSet := pack Carrier (pack 48 (trunc1 (Equiv Carrier (Fin 48)) (isoToEquiv Carrier (Fin 48) fwd bwd sec retEta)))
+def fwd15 : Fin 48 := fwd (pack 1 5)
+def bwd29 : Carrier := bwd 29
+def card48 : Nat := card prodFinSet
+-- The product (e : Fin 11) * Fin 11 and its equivalence to Fin 121: the
+-- forward map in ring form, finAdd 121 (finMul 121 e 11) x.
+def Carrier11 : Type 0 := (e : Fin 11) * Fin 11
+def lift11 : (x : Fin 11) -> Fin 121 := fun (x : Fin 11) => finCase 11 x 0 1 2 3 4 5 6 7 8 9 10
+def fwd11 : (p : Carrier11) -> Fin 121 := fun (p : Carrier11) => finAdd 121 (finMul 121 (lift11 (witness p)) 11) (lift11 (payload p))
+def bwd11 : (k : Fin 121) -> Carrier11 := fun (k : Fin 121) => finCase 121 k (pack 0 0) (pack 0 1) (pack 0 2) (pack 0 3) (pack 0 4) (pack 0 5) (pack 0 6) (pack 0 7) (pack 0 8) (pack 0 9) (pack 0 10) (pack 1 0) (pack 1 1) (pack 1 2) (pack 1 3) (pack 1 4) (pack 1 5) (pack 1 6) (pack 1 7) (pack 1 8) (pack 1 9) (pack 1 10) (pack 2 0) (pack 2 1) (pack 2 2) (pack 2 3) (pack 2 4) (pack 2 5) (pack 2 6) (pack 2 7) (pack 2 8) (pack 2 9) (pack 2 10) (pack 3 0) (pack 3 1) (pack 3 2) (pack 3 3) (pack 3 4) (pack 3 5) (pack 3 6) (pack 3 7) (pack 3 8) (pack 3 9) (pack 3 10) (pack 4 0) (pack 4 1) (pack 4 2) (pack 4 3) (pack 4 4) (pack 4 5) (pack 4 6) (pack 4 7) (pack 4 8) (pack 4 9) (pack 4 10) (pack 5 0) (pack 5 1) (pack 5 2) (pack 5 3) (pack 5 4) (pack 5 5) (pack 5 6) (pack 5 7) (pack 5 8) (pack 5 9) (pack 5 10) (pack 6 0) (pack 6 1) (pack 6 2) (pack 6 3) (pack 6 4) (pack 6 5) (pack 6 6) (pack 6 7) (pack 6 8) (pack 6 9) (pack 6 10) (pack 7 0) (pack 7 1) (pack 7 2) (pack 7 3) (pack 7 4) (pack 7 5) (pack 7 6) (pack 7 7) (pack 7 8) (pack 7 9) (pack 7 10) (pack 8 0) (pack 8 1) (pack 8 2) (pack 8 3) (pack 8 4) (pack 8 5) (pack 8 6) (pack 8 7) (pack 8 8) (pack 8 9) (pack 8 10) (pack 9 0) (pack 9 1) (pack 9 2) (pack 9 3) (pack 9 4) (pack 9 5) (pack 9 6) (pack 9 7) (pack 9 8) (pack 9 9) (pack 9 10) (pack 10 0) (pack 10 1) (pack 10 2) (pack 10 3) (pack 10 4) (pack 10 5) (pack 10 6) (pack 10 7) (pack 10 8) (pack 10 9) (pack 10 10)
+def sec11 : (k : Fin 121) -> Path (Fin 121) (fwd11 (bwd11 k)) k := fun (k : Fin 121) => refl
+def ret11c : (e : Fin 11) -> (x : Fin 11) -> Path Carrier11 (bwd11 (fwd11 (pack e x))) (pack e x) := fun (e : Fin 11) => fun (x : Fin 11) => refl
+def ret11 : (p : Carrier11) -> Path Carrier11 (bwd11 (fwd11 p)) p := fun (p : Carrier11) => ret11c (witness p) (payload p)
+def prodFinSet11 : FinSet := pack Carrier11 (pack 121 (trunc1 (Equiv Carrier11 (Fin 121)) (isoToEquiv Carrier11 (Fin 121) fwd11 bwd11 sec11 ret11)))
+def fwd37 : Fin 121 := fwd11 (pack 3 7)
+def bwd40 : Carrier11 := bwd11 40
+def card121 : Nat := card prodFinSet11
+-- A loop in FinSet at finSetFin 3: ua of the Fin 3 rotation on the carrier
+-- (univ.lang loopRot1) and a path over it in isFinSet, refl on the size
+-- and squash1 of two transp on the truncation (the isProp to PathP shape).
+-- The loop is a Pi def, as hcompGlue in univ.lang: its rule 6 term print
+-- does not compute. Its end at i0 is a FinSet value that prints.
+def loopRot1 : Path (Type 0) (Fin 3) (Fin 3) := ua (Fin 3) (Fin 3) (isoToEquiv (Fin 3) (Fin 3) (fun (r : Fin 3) => finAdd 3 r 1) (fun (r : Fin 3) => finAdd 3 r 2) (fun (k : Fin 3) => refl) (fun (k : Fin 3) => refl))
+def sqOver : (x : Fin 1) -> PathP (fun (i : I) => Trunc1 (Equiv (loopRot1 @ i) (Fin 3))) (payload (payload (finSetFin 3))) (payload (payload (finSetFin 3))) := fun (x : Fin 1) => fun (i : I) => squash1 (Equiv (loopRot1 @ i) (Fin 3)) (transp (fun (j : I) => Trunc1 (Equiv (loopRot1 @ (i /\ j)) (Fin 3))) (~i) (payload (payload (finSetFin 3)))) (transp (fun (j : I) => Trunc1 (Equiv (loopRot1 @ (i \/ ~j)) (Fin 3))) i (payload (payload (finSetFin 3)))) i
+def overA : (x : Fin 1) -> PathP (fun (i : I) => isFinSet (loopRot1 @ i)) (payload (finSetFin 3)) (payload (finSetFin 3)) := fun (x : Fin 1) => fun (i : I) => pack 3 ((sqOver 0) @ i)
+def finSetLoop : (x : Fin 1) -> Path FinSet (finSetFin 3) (finSetFin 3) := fun (x : Fin 1) => fun (i : I) => pack (loopRot1 @ i) ((overA 0) @ i)
+def loopAt0 : FinSet := (finSetLoop 0) @ i0

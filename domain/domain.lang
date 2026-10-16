@@ -169,3 +169,14 @@ def hedberg : (A : Type 0) -> ((a : A) -> (b : A) -> Dec (Path A a b)) -> isSet 
       j -> hedbergSquare A dec a b q @ i @ k ]) a
 def isSetNat : isSet Nat := hedberg Nat decEqNat
 def isSetFin : (n : Nat) -> isSet (Fin n) := fun (n : Nat) => hedberg (Fin n) (decEqFin n)
+-- Finite sets (S5c item 10, ruling R6 (a)): isFinSet A holds the size n
+-- outside the truncation, as in agda/cubical, so card is a projection.
+-- FinSet is in Type 1 (Type 0 : Type 1, no cumulativity). El is the
+-- carrier, card the size, finSetFin the FinSet of Fin n by idEquiv.
+def isFinSet : (A : Type 0) -> Type 0 :=
+  fun (A : Type 0) => Sigma (n : Nat) (Trunc1 (Equiv A (Fin n)))
+def FinSet : Type 1 := Sigma (A : Type 0) (isFinSet A)
+def El : (X : FinSet) -> Type 0 := fun (X : FinSet) => witness X
+def card : (X : FinSet) -> Nat := fun (X : FinSet) => witness (payload X)
+def finSetFin : (n : Nat) -> FinSet :=
+  fun (n : Nat) => pack (Fin n) (pack n (trunc1 (Equiv (Fin n) (Fin n)) (idEquiv (Fin n))))

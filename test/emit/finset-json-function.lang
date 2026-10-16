@@ -1,0 +1,5 @@
+-- An Equiv def is a Sigma instance that holds a function, which has no
+-- JSON form: the build refuses at the def, before the FinSet value. Keep
+-- the equivalence inline in the FinSet value (see examples/finset.lang).
+def rotEquiv : Equiv (Fin 3) (Fin 3) := isoToEquiv (Fin 3) (Fin 3) (fun (r : Fin 3) => finAdd 3 r 1) (fun (r : Fin 3) => finAdd 3 r 2) (fun (k : Fin 3) => refl) (fun (k : Fin 3) => refl)
+def rot3 : FinSet := pack (Fin 3) (pack 3 (trunc1 (Equiv (Fin 3) (Fin 3)) rotEquiv))

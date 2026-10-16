@@ -271,11 +271,121 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   return internal(o, "an unknown operation");
 }
 
+static int printed_json(Out *o, const Value *v);
+
+/* `Fin n` with a literal n. */
+static int fin_literal(const Value *t) {
+  return val_is(t, OP_FIN) && t->args[0]->kind == VAL_NAT;
+}
+
+/* One entry of a FinSet index table: the forward map FWD at POINT must
+   compute to a number. */
+static int finset_entry(Out *o, const Value *fwd, const Value *point, int first) {
+  char num[24];
+  const Value *r = point == NULL ? NULL : apply_value(o->m, fwd, point);
+  if (r == NULL || o->m->diag->set)
+    return 0;
+  if (!ready(o, r))
+    return 0;
+  if (r->kind != VAL_NAT)
+    return refuse(o, "a stuck term");
+  snprintf(num, sizeof num, "%llu", (unsigned long long)r->nat);
+  return (first || put_text(o, ",")) && put_text(o, num);
+}
+
+/* The FinSet rule (S5c item 12, R8 (a), J20 (a)): a pack of type FinSet
+   whose payload is `pack n (trunc1 e)` with a literal n, and whose carrier
+   is `Fin a` or `Sigma (e : Fin a) (Fin b)` with literals, prints as
+   {"carrier": "A", "size": n, "index": [...]}: the forward map of e at
+   each point of the carrier, in enumeration order (0 .. a-1; `pack 0 0`,
+   `pack 0 1`, .., `pack (a-1) (b-1)`). *DONE is 0 when the rule does not
+   apply: then the generic Sigma print runs (and refuses the carrier, a
+   type). An entry that does not compute to a number refuses. */
+static int finset_json(Out *o, const Value *type, const Value *v, int *done) {
+  Machine *m = o->m;
+  const Value *carrier = v->args[0];
+  const Value *payload;
+  const Value *size;
+  const Value *t;
+  const Value *e;
+  const Value *fwd;
+  const CtorInfo *ci;
+  size_t mark = o->len;
+  char num[24];
+  uint64_t i;
+  uint64_t j;
+  uint32_t k;
+  int first = 1;
+  *done = 0;
+  /* Similar packs can hold arbitrary data under trunc1. Only the full
+     library type guarantees an equivalence with the recorded size. */
+  for (k = 0; k < m->def_count; k++)
+    if (m->defs[k].origin == ORIGIN_DOMAIN && strcmp(m->defs[k].name, "FinSet") == 0)
+      break;
+  if (k == m->def_count)
+    return 1;
+  if (!conv_values(m, 0u, type, def_value(m, k)))
+    return !m->diag->set;
+  payload = closure_apply(m, type, carrier);
+  if (payload == NULL)
+    return 0;
+  if (payload->kind != VAL_SIGMA || !val_is(payload->dom, OP_NAT) || !val_is(v->args[1], OP_PACK))
+    return 1;
+  size = v->args[1]->args[0];
+  t = v->args[1]->args[1];
+  if (size->kind != VAL_NAT || !val_is(t, OP_CTOR) || t->inst >= m->ctor_count || t->argc < 1u)
+    return 1;
+  ci = &m->ctors[t->inst];
+  if (strcmp(ci->name, "trunc1") != 0 || ci->field_count != 1u)
+    return 1;
+  e = t->args[t->argc - 1u];
+  if (!val_is(e, OP_PACK))
+    return 1;
+  fwd = e->args[0];
+  if (!fin_literal(carrier) && !(carrier->kind == VAL_SIGMA && fin_literal(carrier->dom)))
+    return 1;
+  snprintf(num, sizeof num, "%llu", (unsigned long long)size->nat);
+  if (!put_text(o, "{\"carrier\":") || !printed_json(o, carrier) || !put_text(o, ",\"size\":")
+      || !put_text(o, num) || !put_text(o, ",\"index\":["))
+    return 0;
+  if (fin_literal(carrier)) {
+    for (i = 0; i < carrier->args[0]->nat; i++)
+      if (!finset_entry(o, fwd, val_nat(m, i), i == 0))
+        return 0;
+  } else {
+    for (i = 0; i < carrier->dom->args[0]->nat; i++) {
+      const Value *b = closure_apply(m, carrier, val_nat(m, i));
+      if (b == NULL)
+        return 0;
+      if (!fin_literal(b)) {
+        o->len = mark;
+        o->data[mark] = '\0';
+        return 1;
+      }
+      for (j = 0; j < b->args[0]->nat; j++) {
+        const Value *pair[2];
+        pair[0] = val_nat(m, i);
+        pair[1] = val_nat(m, j);
+        if (!finset_entry(o, fwd, val_op(m, VAL_OP, OP_PACK, 0, 0, pair, 2), first))
+          return 0;
+        first = 0;
+      }
+    }
+  }
+  *done = 1;
+  return put_text(o, "]}");
+}
+
 /* The payload type is the Sigma body at the witness. */
 static int pack_json(Out *o, const Value *type, const Value *v) {
   const Value *payload;
+  int done;
   if (!val_is(v, OP_PACK))
     return internal(o, "a Sigma value that is not pack");
+  if (type->dom->kind == VAL_UNIV && !finset_json(o, type, v, &done))
+    return 0;
+  if (type->dom->kind == VAL_UNIV && done)
+    return 1;
   if (!put_text(o, "{\"witness\":") || !value_json(o, type->dom, v->args[0]))
     return 0;
   payload = closure_apply(o->m, type, v->args[0]);

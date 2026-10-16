@@ -46,3 +46,8 @@ dec sqFin => fun j => fun i => 1
 dec isRight01 => fun _ => 1
 dec isRightNat => fun _ => 1
 dec dec00 => fun _ => inl (fun _x0 => 0)
+finset card3 => 3
+finset card48 => 48
+finset card121 => 121
+finset fwd37 => 40
+finset bwd40 => pack 3 7

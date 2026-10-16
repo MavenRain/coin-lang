@@ -1,0 +1,4 @@
+-- The size of a FinSet sits outside the truncation (R6 (a)), so the kit
+-- checks it against the equivalence: a size 4 with an Equiv (Fin 3) (Fin 3)
+-- point refuses.
+def bad : FinSet := pack (Fin 3) (pack 4 (trunc1 (Equiv (Fin 3) (Fin 3)) (idEquiv (Fin 3))))

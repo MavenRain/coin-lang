@@ -1194,3 +1194,103 @@ kill came from a repo test, not from a compile error.
 | J15 | `refute_core`: `Fin 0` and `Unit` swapped in the code line (session 9) | C case "decEqFin inr round-trips" (`TYPE_MISMATCH`: replay: expected a term of type Fin 0, found a term of type Unit; path regressions 1 failed) |
 | J16 | `dec_eq`: `x` is `x + 1u` for `decEqNat` (`succ a` compared with `b`) | `dec.lang` (`isRightNat`: `PATH_END`, the path at i1 is 0, the type needs 1); then the six `dec` evals; gate 8 failures |
 | J17 | domain `hedberg`: `p` and `q` swapped in the `i` face (session 10) | each example (19 of 19; the first is `algebra.lang`: `SYSTEM_OVERLAP`, hedberg: the branches for i and ~j must agree where both keys hold); gate 148 failures |
+
+## S5c
+
+S5c (the finite coin spaces: `isFinSet`, `FinSet`, `El`, `card`,
+`finSetFin`, the FinSets of `Fin 2 * Fin 24` and `Fin 11 * Fin 11`, and
+the `FinSet` JSON rule) is complete: items 10 to 12 are done, UNSTAGED
+until the USER commit (one commit for S5c, R11 (a)). The rulings R1 to
+R12 are all (a), and J20 is (a): the JSON of a `FinSet` is the index
+table of the forward map of its equivalence.
+
+Item 10 (domain, session 12): `domain/domain.lang` adds `isFinSet A :=
+Sigma (n : Nat) (Trunc1 (Equiv A (Fin n)))` (R6 (a): the size outside
+the truncation), `FinSet := Sigma (A : Type 0) (isFinSet A)`, `El` (the
+carrier, the first projection), `card` (the size, a projection of the
+payload) and `finSetFin n` (the `FinSet` of `Fin n`, with `idEquiv`).
+The domain grows from 171 to 182 lines. No kernel change.
+
+Item 11 (sessions 12 and 13): the two product carriers. `Sigma (e : Fin
+2) (Fin 24)` is equivalent to `Fin 48` and `Sigma (e : Fin 11) (Fin 11)`
+to `Fin 121`, each by `isoToEquiv` of a forward map `fwd`, a backward
+map `bwd`, a section `sec` and a retraction. The retraction law is
+proved curried (`retCurried`, one `finAll` for each literal binder) and
+then turned into the law on the Sigma by Sigma eta (`retEta`; J20 (a)).
+The loop `finSetLoop` is a `FinSet` loop over `loopRot1` (the `ua` line
+of the rotation of `Fin 3`): `sqOver` is the `PathP` between the two
+truncation points in the agda/cubical `isProp->PathP` shape, `overA`
+lifts it to `isFinSet`, and the loop pairs the two.
+
+Item 12 (session 14): the `FinSet` JSON rule in `src/json.c`, before
+`pack_json`: `fin_literal`, `finset_entry` and `finset_json`, hooked in
+`pack_json` when the witness type is a universe. A `pack A (pack n
+(trunc1 e))` whose carrier `A` is `Fin a` or `Sigma (e : Fin a) (Fin b)`
+with literals prints `{"carrier": "A", "size": n, "index": [...]}`: the
+forward map of `e` at each point of the carrier, in enumeration order
+(`0 .. a-1`; `pack 0 0`, `pack 0 1`, .., `pack (a-1) (b-1)`). An entry
+that does not compute to a number is refused. When the rule does not
+apply, the generic Sigma print runs and refuses the carrier
+(`JSON_VALUE`, a type), as before. `examples/finset.lang` (12 instances;
+`test/json/finset.json`): `fin3` (`{"carrier":"Fin
+3","size":3,"index":[0,1,2]}`), `card3`, the `Fin 2 * Fin 24` block with
+`prodFinSet` (48 entries), `fwd15`, `bwd29`, `card48`, the `Fin 11 *
+Fin 11` block with `prodFinSet11` (121 entries), `fwd37`, `bwd40`,
+`card121`, `loopRot1` (`{"from":"Fin 3","to":"Fin
+3","transport":[1,2,0]}`), and `loopAt0 := (finSetLoop 0) @ i0` (the
+`fin3` object). The evals `finset card3 => 3`, `finset card48 => 48`,
+`finset card121 => 121`, `finset fwd37 => 40` and `finset bwd40 => pack
+3 7` (53). The check refusal `finset-size-inside.lang` (the size 4 with
+an equivalence to `Fin 3`: `TYPE_MISMATCH`; 62). The build refusal
+`test/emit/finset-json-function.lang` (a top-level `Equiv` def:
+`JSON_VALUE`, the instance holds a function; 4). The C case "FinSet
+index table" (52: `finSetFin 3` builds to a JSON that contains
+`"carrier":"Fin 3","size":3,"index":[0,1,2]`). The mutants J18 to J20
+(the table).
+
+Gate: `make check` is GREEN at examples 21, parse 11, check 62, evals
+53, json 21, build refusals 4, regressions 6, printer 2, path
+regressions 52 (0 failed). The clang `-Wswitch-enum` pass is clean. The
+dash scan is clean.
+
+Docs: `docs/host/README.md` adds the `FinSet` row after the `Sigma`
+row. `docs/PLAN.md` section 2 gives `isFinSet` as built (the size
+outside the truncation), section 6 adds the `FinSet` bullet, and section
+7 says that S5c is done and names its defs. `README.md` does not list
+the examples.
+
+Deviations from the plan (the kickoff section 1.2; the sessions 12 to
+14 of the S5 HANDOFF give the probes):
+
+- The item 11 retraction law is curried, then closed by Sigma eta:
+  `finAll` fires at a literal binder only, so the law on `Sigma (e : Fin
+  2) (Fin 24)` is `retCurried` under two `finAll` and `retEta` on top.
+- A top-level `Equiv`, `Trunc1` or `isFinSet` def refuses the build
+  (`JSON_VALUE`, the instance holds a function or a truncation of one):
+  the example inlines them (`isoToEquiv` inside the `pack`).
+- The truncation ends of `sqOver` and `overA` are `payload (payload
+  (finSetFin 3))` and `payload (finSetFin 3)`; there are no `t3` or
+  `fs3` defs (conversion reduces the projections).
+- The loop as a `Path FinSet` instance does not refuse `JSON_TYPE` as
+  predicted: `langc build` stops with `INTERNAL: finSetLoop: the
+  evaluator found a Nat operation on a value that is not a Nat` at the
+  rule 6 term print (the rotation `finAdd` at a stuck element under a
+  free interval variable). Both ends evaluate. `langc eval` of the loop
+  gives `EVAL_PRINT`. So the loop is a Pi def over `(x : Fin 1)` (the
+  `hcompGlue` precedent) and `loopAt0` prints its end. The kernel
+  INTERNAL (a Nat operation on a stuck argument should stay stuck) is a
+  candidate for a later slice, not an S5c change.
+- The check refusal code is `TYPE_MISMATCH` (the kickoff left it open).
+
+Mutants: J18, J19 and J20 ran by hand in session 15 on the session 14
+tree, one at a time (`sd -s` at one site of `json.c`, `make -B check`,
+then `build/path-regressions` under the mutant, since a gate failure
+stops `make` before it; `sd -s` back; the `shasum` of `json.c` before
+and after is equal: 1a87315c). Each kill came from a repo test, not from
+a compile error. J13 to J17 are the S5b mutants (the S5b table).
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| J18 | `finset_json`: the size print is `size->nat - 1u` | `FAIL build examples/finset.lang: the output differs from test/json/finset.json` (gate 1 failure); C case `FAIL FinSet index table: expected JSON containing "carrier":"Fin 3","size":3,"index":[0,1,2]` (path regressions 1 failed) |
+| J19 | `finset_json`: the Sigma loop point is `pack j i` (payload-major) | `FAIL build examples/finset.lang: the output differs from test/json/finset.json` (gate 1 failure); the C case passes (a `Fin 3` carrier does not reach the Sigma loop) |
+| J20 | `finset_json`: the Fin loop starts at `i = 1` (the first entry dropped) | `FAIL build examples/finset.lang: the output differs from test/json/finset.json` (gate 1 failure); C case `FAIL FinSet index table` (`"index":[0,1,2]` absent; path regressions 1 failed) |

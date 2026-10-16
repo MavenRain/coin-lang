@@ -31,7 +31,7 @@ them as open items:
 
 | Concept | Design text | Encoding (proposal) | Slice |
 |---|---|---|---|
-| Coin space | `Ω : FinSet` | `FinSet := Sigma (A : U) (isFinSet A)` and `isFinSet A := Trunc1 (Sigma (n : Nat) (Equiv A (Fin n)))`. A library def, not a kernel primitive (O3). `El : FinSet -> U` is the first projection. | S5 |
+| Coin space | `Ω : FinSet` | `FinSet := Sigma (A : U) (isFinSet A)` and `isFinSet A := Sigma (n : Nat) (Trunc1 (Equiv A (Fin n)))` as built (R6 (a): the size outside the truncation; `card` is a projection). A library def, not a kernel primitive (O3). `El : FinSet -> U` is the first projection. | S5 |
 | Uniform random variable | `Σ (Ω : FinSet) (Ω → T)` | `Rand T := Sigma (Om : FinSet) (El Om -> T)`. The distribution of `(Om, f)` is the count of each fiber of `f`, divided by the size of `Om`. | S6 |
 | Monad | map and bind | `pure x := (Fin 1, \_ -> x)`. `map` composes. `bind` uses the Sigma of the coin spaces (O4). The monad laws are paths made from `ua` of the Sigma unit and associativity equivalences. They are not conversions. | S6 |
 | Equivalence | `σ : Ω ≃ Ω'` | `Equiv A B := Sigma (f : A -> B) (isEquiv f)`, with `isEquiv f` as contractible fibers (the CTT library form). `isoToEquiv` makes an equivalence from two inverse maps. | S3 |
@@ -193,6 +193,8 @@ are new or change:
 - Each def whose type is a `PathP` type is an instance.
 - A function whose domain is `Fin n`, or a Sigma of `Fin` types, is a
   table: a JSON array of its values in enumeration order.
+- A `FinSet` whose carrier is `Fin a` or `Sigma (e : Fin a) (Fin b)` is
+  `{"carrier": "A", "size": n, "index": [...]}` (S5c).
 - A type is its printed normal form, as a string (strategy-lang S1 ruling
   (b)).
 - A `Rand T` value is `{"coins": n, "values": [...]}`.
@@ -234,9 +236,10 @@ are new or change:
   and `finEq`, `natLe` and `natEq` into `Fin 2`, the removal of `Flag`
   (`natSub` stays). S5b (done): `Empty`, `Not`, `Dec` and `Stable`,
   `decEqFin` and `decEqNat` with evidence (a refutation is a transport,
-  not an axiom), `hedberg`, `isSetNat` and `isSetFin`. S5c, the
-  library: `FinSet`, `El`, the `FinSet` of `Fin n`, of a Sigma, and of
-  `Fin 2 * Fin 24`.
+  not an axiom), `hedberg`, `isSetNat` and `isSetFin`. S5c (done): the
+  library: `isFinSet`, `FinSet`, `El`, `card`, `finSetFin`; the FinSets
+  of `Fin 2 * Fin 24` and `Fin 11 * Fin 11` in `examples/finset.lang`,
+  the FinSet loop as a Pi def, and the `FinSet` JSON rule.
 - S6: `Rand`, its monad laws as paths, `couple`, `count`, `Bag`, `match`
   and the fiber theorem in both directions. JSON rules 2 and 3 and the
   `Rand` rule.
