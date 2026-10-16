@@ -112,7 +112,12 @@ S1 closed both:
   type at the parameters of the line, a recursive field along the line;
   the interval fields do not change) and into the tubes and the base of a
   formal `hcomp`, and the JSON writer prints a `trunc1` point as
-  `{"trunc": a}`.
+  `{"trunc": a}`. S4c: a constructor field can use the earlier fields
+  (a field telescope), a field `Path F x y` folds by `fun (k : I) => fold
+  (p @ k)`, a constructor can have two interval fields (a square with
+  four faces), and `Trunc0` and `Quot A R` are domain families; the
+  `squash0` and `quotSquash` fold cases have the type `isSet RES`, and
+  `transp` of these squares along a parameter line stays stuck.
 
 Constructor transport reduces a path constructor only when its boundary
 faces use its interval fields and each branch is a recursive field, as

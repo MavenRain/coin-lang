@@ -150,6 +150,7 @@ declares a path constructor. `domain/domain.lang` declares the circle:
 | `hcomp` at a family with a path constructor | `hcomp F phi (fun (j : I) => [ k -> u, ... ]) u0` | A true key gives the branch at `i1`. Else the `hcomp` is canonical (a formal `hcomp`), also at `i0` and with a neutral base. `fold` of a formal `hcomp` is `hcomp RES phi (fun (j : I) => [ k -> fold u, ... ]) (fold u0)`. |
 | `transp` at a family with no parameters | `transp (fun (_ : I) => S1) phi v` | `v`: the line is constant by the form of the family (this is not regularity). |
 | `transp` at a family with parameters | `transp (fun (i : I) => F (p i)) phi v` | At a constructor `v`: the same constructor at the parameters of the line at `i1`. Each point field goes along its field type at the parameters of the line, and a recursive field goes along the line. The interval fields do not change. At a formal `hcomp`: `hcomp` at the line at `i1`, with each tube and the base transported. A neutral `v` stays stuck. |
+| `fold` at a constructor with two interval fields | `fold c0 .. cn x` | The case of `squash0` or `quotSquash` has the type `isSet RES`: a square over the folded fields. A path field `p` goes to its case as `fun (k : I) => fold (p @ k)`. A fold with no such case gives `TYPE_MISMATCH`. |
 
 Constructor transport reduces a path constructor only when its boundary
 faces use its interval fields and each branch is a recursive field, as
@@ -157,15 +158,20 @@ with `squash1`. Other boundary terms retain an opaque `transp`: rebuilding
 the constructor alone could change its endpoints when a parameter changes.
 General boundaries require a boundary correction before they can reduce.
 
+`squash0` and `quotSquash` have two interval fields, and their branches
+are path applications (`squash0Left @ j`), not recursive fields. Thus
+their transport along a parameter line retains an opaque `transp` (R7
+(a)).
+
 `examples/circle.lang` has `loopPath`, the transport along `code2 (loop
 i)` (a fold of `S1` into `Type 0` with a `ua` path case), which moves
 `0` to `1`, and the formal `hcomp` `loop2`, whose transport along
-`code3` moves `0` to `2`. A fold of a constructor with 2 interval fields
-comes in S4c. `langc check` gives these codes for path constructors:
+`code3` moves `0` to `2`. `langc check` gives these codes for path
+constructors:
 
 | Code | Cause |
 |---|---|
-| `HIT_BOUNDARY` | A path constructor has no boundary, more than 2 interval fields, or a point field after an interval field; a constructor with no interval field has a boundary; a fold meets a boundary term that is not a field or an earlier point constructor, or a constructor with 2 interval fields |
+| `HIT_BOUNDARY` | A path constructor has no boundary, more than 2 interval fields, or a point field after an interval field; a constructor with no interval field has a boundary; a fold meets a boundary term that is not a field, a path field at an interval or an earlier point constructor, or an unsupported field over an earlier recursive field |
 | `SYSTEM_COVER` | The boundary keys do not cover the faces of the interval fields |
 | `SYSTEM_OVERLAP` | Two boundary branches do not agree where both keys hold |
 | `TYPE_MISMATCH` | A boundary branch does not have the family type, or a fold has no case for a path constructor |

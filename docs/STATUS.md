@@ -734,3 +734,103 @@ The new C case checks the parameter-dependent boundary through printing,
 rechecking and conversion. It passes with the base evaluator, fails on
 the original staged evaluator and passes with the fix. `make check` and
 the clang pass are green; path regressions are now 41, with 0 failures.
+
+## S4c
+
+S4c (field telescopes, path fields, constructors with two interval
+fields, `Trunc0`, `Quot`) is complete. A constructor field can use the
+earlier fields (a field telescope): `check_field` pushes the earlier
+fields, and `ctor_app` checks each field at the earlier field values. A
+field `Path F x y` (with `x` and `y` earlier recursive fields) is a path
+field, and `fold` gives it to its case as `fun (k : I) => fold (p @ k)`
+(`fold_path_field`). A constructor can have two interval fields: its
+boundary is a square with the four faces `~i`, `i`, `~j` and `j`, and its
+fold case has the square type over the folded fields (`square_type`).
+`domain/domain.lang` adds `family Trunc0 (A : Type 0)` (`trunc0` and the
+square `squash0`) and `family Quot (A : Type 0) (R : A -> A -> Type 0)`
+(`quot`, the path `quotEq` and the square `quotSquash`). The `squash0`
+and `quotSquash` fold cases have the type `isSet RES` (R8 (a)). The
+transport of `squash0` or `quotSquash` along a parameter line stays stuck
+(R7 (a)): `field_transport_boundary` gives 0, because their branches are
+path applications (`squash0Left @ j`), not recursive fields.
+
+Gate: `make check` is GREEN at examples 18, parse 11, check 57, evals 39,
+json 18, build refusals 4, regressions 6, printer 2, path regressions 44
+(0 failed). The clang `-Wswitch-enum` pass is clean. The dash scan is
+clean.
+
+Tests: `examples/quot.lang` (`map0`, `map0At`, `sq0`, `map0Sq`,
+`parity`, `Par`, `qPath`, `toTrunc`, `toTrunc2`, `toTrunc3`,
+`toTruncPath`) and `test/json/quot.json` (6 instances; the function defs
+do not emit). `map0` folds `Trunc0 A` into `Trunc0 B` with the cases `fun
+a => trunc0 B (f a)` and `squash0 B` (eta-expanded). `sq0` gives a square
+between `refl` and `trans ... refl refl` by `squash0` (they are not equal
+by conversion, because there is no regularity). `map0Sq` checks, at a
+neutral `x` and `p`, that `map0` of a `squash0` square is the `squash0`
+square of the folded path fields. `qPath` is `{"path": "quotEq", "args":
+[0, 2, {"refl": 0}]}` (rule 4). `toTrunc` folds `Quot (Fin 4) Par` into
+`Trunc0 (Fin 4)`, `toTrunc2` checks it at `2` by `refl`, and
+`toTruncPath` checks the fold of `qPath`. The check refusal
+`trunc0-no-set` (a fold of `Trunc0 (Fin 2)` into `Nat` with the point case
+only) gives `TYPE_MISMATCH`. The eval `quot toTrunc3` gives `trunc0 (Fin
+4) 2`. The C path cases: the transport of `squash0` along a parameter
+line stays stuck and round-trips; the stuck square is not the field
+rebuild (`PATH_UIP`); a dimension-2 boundary with the faces `~i`, `i` and
+`~j` only gives `SYSTEM_COVER`.
+
+Deviations from the plan (kickoff section 2; the kickoff text gives the
+rulings):
+
+- Parity ruling. There is no map from `Fin 4` to `Fin 2` (no `finVal`;
+  `finAdd` and `finNeg` stay in `Fin n`). Thus `parity : Fin 4 -> Fin 4
+  := fun a => finAdd 4 a a` (0 for an even `a`, 2 for an odd `a`), `Par a
+  b := Path (Fin 4) (parity a) (parity b)`, and `toTrunc` goes into
+  `Trunc0 (Fin 4)`. The eval `quot toTrunc3` gives `trunc0 (Fin 4) 2`, not
+  `trunc0 (Fin 2) 1`.
+- Counts. Path regressions are 44, not 38: S4b ended at 41 (with the
+  review fix case), and S4c adds 3 (the kickoff 2 and the
+  not-the-field-rebuild refusal that pins R7 (a)).
+- The `Trunc0` fields are `trunc0Of`, `squash0From`, `squash0To`,
+  `squash0Left` and `squash0Right`, and the `Quot` fields are `quotOf`,
+  `quotA`, `quotB`, `quotR`, `quotFrom`, `quotTo`, `quotLeft` and
+  `quotRight` (a domain field name is a core name, R4).
+- The eval names the value def `toTrunc3`, not a path def (the S4b
+  `truncAt` form). `quot.lang` adds `map0At` and `toTruncPath`.
+- H16 is killed by `quot.lang`, not by `trunc0-no-set`: under H16 the
+  refusal still gives `TYPE_MISMATCH` (the arity passes, and the
+  scrutinee is then checked as the `squash0` case).
+- H18 is killed by each example: the `Trunc0` declaration in the domain
+  gives `SYSTEM_COVER` (the keys must equal the cover). The C case with 3
+  faces stays the killer of a cover that is too small.
+- Not run: the item 13 self-review mutants and the candidate mutant
+  `field_transport_boundary` gives 1 (expected killer: the
+  not-the-field-rebuild C case).
+
+Mutants: one at a time, `make -B` for each build, by the runners in
+`lang-template-work/coin-lang-S4c-mut/` (`lib.sh`, a copy of the S4a one:
+a site assert, an awk edit, the gate, the C cases, restore). Each file was
+restored and its `shasum` was confirmed (15 files, all OK). Each kill came
+from a test, not from a compile error.
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| H15 | `fold_family`: a path field goes to its case as `p`, not as `fun k => fold (p @ k)` | `quot.lang` (`map0Sq`: `PATH_UIP`), `quot toTrunc3`, `quot.json` |
+| H16 | `rule_fold`: the fold arity does not count the constructors with two interval fields | `quot.lang` (`map0`: `TYPE_MISMATCH`, 3 arguments), `quot toTrunc3`, `quot.json` |
+| H17 | `path_case_type`: the ends B0 and B1 swapped | `quot.lang` (`toTrunc`: `PATH_END`), `trunc.lang` (`map1`: `PATH_END`), `trunc truncAt`, `quot toTrunc3` |
+| H18 | `boundary_core`: the cover has the faces of the first interval field only | each example (`Trunc0`: `SYSTEM_COVER`), the domain C cases |
+## S4c review
+
+Fixed a type-preservation defect in the fold images of boundary point
+constructors: `fold_image` passed path fields unchanged while the evaluator
+folded them. A fold into `Fin 2` could therefore check with boundary ends
+in the source family and normalize to a source constructor instead of a
+`Fin 2` value. Boundary images now map a path field under a fresh interval
+binder and preserve the surrounding field and interval environment.
+
+Two C round-trip regressions cover the wrong-family normal form and a
+square boundary with a path field that captures a surrounding interval.
+The first fails on the original staged checker with `TYPE_MISMATCH` when
+its printed normal form is checked again. The second also fails if its
+surrounding interval is reused as the fresh path binder (`INTERNAL`).
+`make check`, including the clang pass, is green; path regressions are now
+46 with 0 failures. No CI or test gate was weakened.

@@ -188,6 +188,9 @@ static int family_json(Out *o, const Value *type, const Value *v) {
     int lead = i == 0 && f->ctor_count == 1;
     ok = ft != NULL && (lead || put_text(o, ",")) && put_string(o, fi->name) && put_text(o, ":")
       && value_json(o, ft, v->args[f->param_count + i]);
+    /* A later field type is over this field value (S4 item 13). */
+    env = ok ? env_push(o->m, env, v->args[f->param_count + i]) : env;
+    ok = ok && env != NULL;
   }
   return ok && put_text(o, "}");
 }
@@ -452,6 +455,10 @@ static int hit_tree(Out *o, const Value *ty, const Value *x, int *done) {
     const Value *field = x->args[f->param_count + i];
     const Value *ft;
     if (i > 0 && !put_text(o, ","))
+      return 0;
+    /* A field type is over the earlier field values (S4 item 13). */
+    env = i == 0u ? env : env_push(m, env, x->args[f->param_count + i - 1u]);
+    if (i > 0u && env == NULL)
       return 0;
     if (fi->recursive) {
       int field_done;

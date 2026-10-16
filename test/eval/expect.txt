@@ -36,3 +36,4 @@ univ transTwo => 0
 circle loopAt0 => 1
 circle loop2At0 => 2
 trunc truncAt => trunc1 (Fin 3) 1
+quot toTrunc3 => trunc0 (Fin 4) 2
