@@ -180,3 +180,11 @@ def El : (X : FinSet) -> Type 0 := fun (X : FinSet) => witness X
 def card : (X : FinSet) -> Nat := fun (X : FinSet) => witness (payload X)
 def finSetFin : (n : Nat) -> FinSet :=
   fun (n : Nat) => pack (Fin n) (pack n (trunc1 (Equiv (Fin n) (Fin n)) (idEquiv (Fin n))))
+-- Random variables (S6a item 2, rulings R1 and R2 (a)). A Rand T is a pack
+-- of a finite coin space and a map from its points to T. Rand is in
+-- Type 1 because FinSet is in Type 1. The kit builtins pure, map and bind
+-- keep their names, so the monad operations are randPure and randMap.
+def Rand : (T : Type 0) -> Type 1 := fun (T : Type 0) => Sigma (Om : FinSet) (El Om -> T)
+def randPure : (T : Type 0) -> T -> Rand T := fun (T : Type 0) (x : T) => pack (finSetFin 1) (fun (w : Fin 1) => x)
+def randMap : (A : Type 0) -> (B : Type 0) -> (A -> B) -> Rand A -> Rand B :=
+  fun (A : Type 0) (B : Type 0) (f : A -> B) (r : Rand A) => pack (witness r) (fun (w : El (witness r)) => f (payload r w))

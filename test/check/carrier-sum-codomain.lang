@@ -1,0 +1,1 @@
+def wrong : (A : Type 0) -> Nat := fun (A : Type 0) => carrierSum A (fun (x : A) => x)

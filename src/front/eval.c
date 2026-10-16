@@ -28,7 +28,8 @@ static const char *const OP_NAMES[] = {
   [OP_FIN_ADD] = "finAdd", [OP_FIN_NEG] = "finNeg", [OP_FIN_MUL] = "finMul",
   [OP_FIN_VAL] = "finVal", [OP_FIN_EQ] = "finEq", [OP_FIN_CASE] = "finCase",
   [OP_DEC_EQ_FIN] = "decEqFin", [OP_DEC_EQ_NAT] = "decEqNat",
-  [OP_GLUE] = "Glue", [OP_GLUE_ELEM] = "glue", [OP_UNGLUE] = "unglue"
+  [OP_GLUE] = "Glue", [OP_GLUE_ELEM] = "glue", [OP_UNGLUE] = "unglue",
+  [OP_CARRIER_SUM] = "carrierSum"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -50,7 +51,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_FIN_NEG] = 2, [OP_FIN_MUL] = 3, [OP_FIN_VAL] = 2, [OP_FIN_EQ] = 3,
   [OP_FIN_CASE] = VARIES, [OP_DEC_EQ_FIN] = 3, [OP_DEC_EQ_NAT] = 2,
   [OP_GLUE] = 3, [OP_GLUE_ELEM] = 3,
-  [OP_UNGLUE] = 4
+  [OP_UNGLUE] = 4, [OP_CARRIER_SUM] = 2
 };
 
 typedef enum {
@@ -1076,13 +1077,25 @@ static const Value *reduce_filter(Machine *m, uint32_t inst, const Value *const 
   return internal(m, "a filter with no instance");
 }
 
+/* 1 when S stops a Nat operation: blocked(), and a glue element too. A
+   glue element is a point of a Glue type off its faces (a `ua` line at a
+   free i), so no Nat operation can read it: the operation is stuck (S6
+   R13 (a)). */
+static int nat_blocked(Machine *m, const Value *s, Op op, const Value *const *a, uint32_t n, const Value **out) {
+  if (val_is(s, OP_GLUE_ELEM)) {
+    *out = val_op(m, VAL_STUCK, op, 0, 0, a, n);
+    return 1;
+  }
+  return blocked(m, s, op, 0, 0, a, n, out);
+}
+
 /* 1 when both arguments are numbers. Else *OUT is the trap or the stuck
    operation. */
 static int nat_args(Machine *m, Op op, const Value *const *a, uint32_t n, uint64_t *x, uint64_t *y, const Value **out) {
   *out = a[0]->kind == VAL_TRAP ? a[0] : a[1];
   if (a[0]->kind == VAL_TRAP || a[1]->kind == VAL_TRAP)
     return 0;
-  if (blocked(m, a[0], op, 0, 0, a, n, out) || blocked(m, a[1], op, 0, 0, a, n, out))
+  if (nat_blocked(m, a[0], op, a, n, out) || nat_blocked(m, a[1], op, a, n, out))
     return 0;
   if (a[0]->kind != VAL_NAT || a[1]->kind != VAL_NAT) {
     *out = internal(m, "a Nat operation on a value that is not a Nat");
@@ -1125,7 +1138,7 @@ static const Value *nat_succ(Machine *m, const Value *const *a, uint32_t n) {
   const Value *out;
   if (a[0]->kind == VAL_TRAP)
     return a[0];
-  if (blocked(m, a[0], OP_SUCC, 0, 0, a, n, &out))
+  if (nat_blocked(m, a[0], OP_SUCC, a, n, &out))
     return out;
   if (a[0]->kind != VAL_NAT)
     return internal(m, "a Nat operation on a value that is not a Nat");
@@ -1142,7 +1155,7 @@ static const Value *fin_add(Machine *m, const Value *const *a, uint32_t n) {
     return out;
   if (a[2]->kind == VAL_TRAP)
     return a[2];
-  if (blocked(m, a[2], OP_FIN_ADD, 0, 0, a, n, &out))
+  if (nat_blocked(m, a[2], OP_FIN_ADD, a, n, &out))
     return out;
   if (a[2]->kind != VAL_NAT)
     return internal(m, "a Fin operation on a value that is not a number");
@@ -1188,7 +1201,7 @@ static int fin_args3(Machine *m, Op op, const Value *const *a, uint32_t n, uint6
   if (!nat_args(m, op, a, n, k, x, out))
     return 0;
   *out = a[2];
-  if (a[2]->kind == VAL_TRAP || blocked(m, a[2], op, 0, 0, a, n, out))
+  if (a[2]->kind == VAL_TRAP || nat_blocked(m, a[2], op, a, n, out))
     return 0;
   if (a[2]->kind != VAL_NAT) {
     *out = internal(m, "a Fin operation on a value that is not a number");
@@ -1223,6 +1236,58 @@ static const Value *fin_val(Machine *m, const Value *const *a, uint32_t n) {
   if (k == 0)
     return internal(m, "a Fin 0 operation");
   return val_nat(m, x % k);
+}
+
+/* One summand of carrierSum: *SUM + F at POINT. 0 when F at POINT is not a
+   number: *OUT is then the trap, the stuck sum or NULL. */
+static int sum_point(Machine *m, const Value *f, const Value *point, const Value *stuck, uint64_t *sum, const Value **out) {
+  const Value *v = apply_value(m, f, point);
+  *out = v == NULL || v->kind == VAL_TRAP ? v : stuck;
+  if (v == NULL || v->kind != VAL_NAT)
+    return 0;
+  if (*sum + v->nat < *sum) {
+    *out = overflow(m);
+    return 0;
+  }
+  *sum += v->nat;
+  return 1;
+}
+
+/* carrierSum A f (R7 (a)): the sum of f over the points of A, in the order
+   of the FinSet JSON index (witness-major at a Sigma). It computes at a
+   literal Fin a and at a Sigma (e : Fin a) (Fin b) with literal sizes
+   only; at each other carrier it is stuck. A TRUST POINT: the sum does not
+   depend on the enumeration, but no proof of this is in the kernel. */
+static const Value *carrier_sum(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *t = a[0];
+  const Value *stuck = val_op(m, VAL_STUCK, OP_CARRIER_SUM, 0, 0, a, n);
+  const Value *out = stuck;
+  uint64_t sum = 0;
+  uint64_t i;
+  uint64_t j;
+  if (t->kind == VAL_TRAP || a[1]->kind == VAL_TRAP)
+    return t->kind == VAL_TRAP ? t : a[1];
+  if (val_is(t, OP_FIN) && t->args[0]->kind == VAL_NAT) {
+    for (i = 0; i < t->args[0]->nat; i++)
+      if (!sum_point(m, a[1], val_nat(m, i), stuck, &sum, &out))
+        return out;
+    return val_nat(m, sum);
+  }
+  if (t->kind != VAL_SIGMA || !val_is(t->dom, OP_FIN) || t->dom->args[0]->kind != VAL_NAT)
+    return stuck;
+  for (i = 0; i < t->dom->args[0]->nat; i++) {
+    const Value *b = closure_apply(m, t, val_nat(m, i));
+    if (b == NULL || !val_is(b, OP_FIN) || b->args[0]->kind != VAL_NAT)
+      return b == NULL ? NULL : stuck;
+    for (j = 0; j < b->args[0]->nat; j++) {
+      const Value *pair[2];
+      pair[0] = val_nat(m, i);
+      pair[1] = val_nat(m, j);
+      if (!sum_point(m, a[1], val_op(m, VAL_OP, OP_PACK, 0, 0, pair, 2), stuck, &sum, &out))
+        return out;
+    }
+  }
+  return val_nat(m, sum);
 }
 
 /* natEq and finEq: 1 in Fin 2 when X = Y, else 0. */
@@ -1356,7 +1421,7 @@ static const Value *dec_eq(Machine *m, Op op, const Value *const *a, uint32_t n)
    only the body of that literal, so a literal seldom gets here. */
 static const Value *fin_case(Machine *m, const Value *const *a, uint32_t n) {
   const Value *out;
-  if (blocked(m, a[0], OP_FIN_CASE, 0, 0, a, n, &out))
+  if (nat_blocked(m, a[0], OP_FIN_CASE, a, n, &out))
     return out;
   if (a[0]->kind != VAL_NAT || a[0]->nat >= n - 1u)
     return internal(m, "a Fin case on a value out of range");
@@ -1850,6 +1915,7 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
   case OP_NAT_ADD:
   case OP_NAT_SUB:
   case OP_NAT_MUL:
+  case OP_CARRIER_SUM:
   case OP_SUCC:
   case OP_NAT_EQ:
   case OP_NAT_LE:
@@ -2793,6 +2859,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return nat_sub(m, a, n);
   case OP_NAT_MUL:
     return nat_mul(m, a, n);
+  case OP_CARRIER_SUM:
+    return carrier_sum(m, a, n);
   case OP_SUCC:
     return nat_succ(m, a, n);
   case OP_FIN_ADD:

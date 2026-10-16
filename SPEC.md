@@ -95,6 +95,13 @@ An instance is a top-level definition whose type is a data type (F14).
 > `probe/CAPABILITY.md` that set the design, and the check that the compiler
 > runs on its output (for example the axiom report).
 
+Trust point (S6a, S6 ruling R7 (a)): the builtin `carrierSum A f` sums
+`f : A -> Nat` over a literal finite carrier `A` (`Fin a` or `Sigma (e :
+Fin a) (Fin b)`). The kernel does not prove that this sum is invariant
+under each bijection of the carrier. The operation reads the carrier
+type, not its truncated enumeration. At other carriers it stays stuck.
+`count` and the size of a Sigma coin space are guest defs over it (S6c).
+
 ## 9. Open items
 
 > Write here: one item for each open question. Number the items O1, O2 and

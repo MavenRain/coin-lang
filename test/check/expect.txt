@@ -60,3 +60,5 @@ fin-case-branch.lang FIN_CASE
 flag-gone.lang NAME_UNKNOWN
 fin-one-not-empty.lang FIN_CASE
 finset-size-inside.lang TYPE_MISMATCH
+rand-type0.lang TYPE_MISMATCH
+carrier-sum-codomain.lang TYPE_MISMATCH

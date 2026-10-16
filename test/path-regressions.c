@@ -419,6 +419,43 @@ int main(void) {
     "def bogus : Sigma (A : Type 0) (Sigma (n : Nat) (Trunc1 (Equiv A (Fin 2)))) :=\n"
     "pack (Fin 2) (pack 0 (trunc1 (Equiv (Fin 2) (Fin 2)) (idEquiv (Fin 2))))\n",
     "JSON_VALUE");
+  /* S6a item 1 (R13 (a)): a glue element is neutral for a Nat operation.
+     The transport back along the ua line gives finAdd on a glue element;
+     the operation stays stuck and rule 6 prints the term (S5c: INTERNAL). */
+  failed += !json_contains("Nat operation on a glue element stays stuck",
+    "def loopRot1 : Path (Type 0) (Fin 3) (Fin 3) := ua (Fin 3) (Fin 3) (isoToEquiv (Fin 3) (Fin 3) "
+    "(fun (r : Fin 3) => finAdd 3 r 1) (fun (r : Fin 3) => finAdd 3 r 2) (fun (k : Fin 3) => refl) (fun (k : Fin 3) => refl))\n"
+    "def back : Path (Fin 3) 0 0 := fun (i : I) => transp (fun (j : I) => loopRot1 @ (i /\\ ~j)) i0 "
+    "(transp (fun (j : I) => loopRot1 @ (i /\\ j)) (~i) 0)\n",
+    "(finAdd 3 (finAdd 3 (glue (fun (_ : I) => [ ~i -> 0, i -> 1 ]) 1) 1) 2)");
+  /* Both value operands of finAdd must stay neutral on Glue elements. */
+  failed += !json_contains("finAdd right Glue operand stays stuck",
+    "def loopRot1 : Path (Type 0) (Fin 3) (Fin 3) := ua (Fin 3) (Fin 3) (isoToEquiv (Fin 3) (Fin 3) "
+    "(fun (r : Fin 3) => finAdd 3 1 r) (fun (r : Fin 3) => finAdd 3 2 r) (fun (k : Fin 3) => refl) (fun (k : Fin 3) => refl))\n"
+    "def back : Path (Fin 3) 0 0 := fun (i : I) => transp (fun (j : I) => loopRot1 @ (i /\\ ~j)) i0 "
+    "(transp (fun (j : I) => loopRot1 @ (i /\\ j)) (~i) 0)\n",
+    "(finAdd 3 2 (finAdd 3 1 (glue");
+  /* S6a item 3 (R7 (a)): carrierSum reduces only at a literal Fin or Sigma
+     carrier. At a neutral carrier it stays stuck, so the path to 0 has a
+     wrong end. A sum that gives 0 there converts, so this case kills it. */
+  failed += !domain_refuses("carrierSum stays stuck at a neutral carrier", "",
+    "def bad : (A : Type 0) -> (f : A -> Nat) -> Path Nat (carrierSum A f) 0 :=\n"
+    "fun (A : Type 0) => fun (f : A -> Nat) => refl\n",
+    "PATH_END");
+  /* S6a item 4 (R12 (a)): a Rand value prints the number of coins and the
+     map at each point in enumeration order. The two bounds of the carrier
+     are different, so a swapped order or a wrong count changes the text. */
+  failed += !json_contains("Rand values table",
+    "def C : Type 0 := (e : Fin 2) * Fin 3\n"
+    "def lift : (x : Fin 3) -> Fin 6 := fun (x : Fin 3) => finCase 3 x 0 1 2\n"
+    "def fwd : (p : C) -> Fin 6 := fun (p : C) => finCase 2 (witness p) (lift (payload p)) (finAdd 6 (lift (payload p)) 3)\n"
+    "def bwd : (k : Fin 6) -> C := fun (k : Fin 6) => finCase 6 k (pack 0 0) (pack 0 1) (pack 0 2) (pack 1 0) (pack 1 1) (pack 1 2)\n"
+    "def sec : (k : Fin 6) -> Path (Fin 6) (fwd (bwd k)) k := fun (k : Fin 6) => refl\n"
+    "def retC : (e : Fin 2) -> (x : Fin 3) -> Path C (bwd (fwd (pack e x))) (pack e x) := fun (e : Fin 2) => fun (x : Fin 3) => refl\n"
+    "def ret : (p : C) -> Path C (bwd (fwd p)) p := fun (p : C) => retC (witness p) (payload p)\n"
+    "def r : Rand Nat := pack (pack C (pack 6 (trunc1 (Equiv C (Fin 6)) (isoToEquiv C (Fin 6) fwd bwd sec ret)))) "
+    "(fun (p : C) => natAdd (natMul 10 (finVal 2 (witness p))) (finVal 3 (payload p)))\n",
+    "\"value\":{\"coins\":6,\"values\":[0,1,2,10,11,12]}");
   printf("path regressions: %d failed\n", failed);
   return failed != 0;
 }

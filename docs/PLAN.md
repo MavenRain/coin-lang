@@ -32,8 +32,8 @@ them as open items:
 | Concept | Design text | Encoding (proposal) | Slice |
 |---|---|---|---|
 | Coin space | `Ω : FinSet` | `FinSet := Sigma (A : U) (isFinSet A)` and `isFinSet A := Sigma (n : Nat) (Trunc1 (Equiv A (Fin n)))` as built (R6 (a): the size outside the truncation; `card` is a projection). A library def, not a kernel primitive (O3). `El : FinSet -> U` is the first projection. | S5 |
-| Uniform random variable | `Σ (Ω : FinSet) (Ω → T)` | `Rand T := Sigma (Om : FinSet) (El Om -> T)`. The distribution of `(Om, f)` is the count of each fiber of `f`, divided by the size of `Om`. | S6 |
-| Monad | map and bind | `pure x := (Fin 1, \_ -> x)`. `map` composes. `bind` uses the Sigma of the coin spaces (O4). The monad laws are paths made from `ua` of the Sigma unit and associativity equivalences. They are not conversions. | S6 |
+| Uniform random variable | `Σ (Ω : FinSet) (Ω → T)` | `Rand T := Sigma (Om : FinSet) (El Om -> T)`, a domain def in `Type 1` (`FinSet` is in `Type 1`, and the kit has no cumulativity; S6a, R1). The distribution of `(Om, f)` is the count of each fiber of `f`, divided by the size of `Om`. The count is a sum over the carrier: the builtin `carrierSum` (S6a, R7; a trust point, `SPEC.md` section 8). | S6 |
+| Monad | map and bind | `randPure x := (Fin 1, \_ -> x)`. `randMap` composes. The kit builtins `pure`, `map` and `bind` keep their names, so the `Rand` names start with `rand` (S6a, R2). `randBind` uses the Sigma of the coin spaces (O4) and takes the `isFinSet` proof of that Sigma as an argument (S6b, R3). The monad laws are paths made from `ua` of the Sigma unit and associativity equivalences. They are not conversions. | S6 |
 | Equivalence | `σ : Ω ≃ Ω'` | `Equiv A B := Sigma (f : A -> B) (isEquiv f)`, with `isEquiv f` as contractible fibers (the CTT library form). `isoToEquiv` makes an equivalence from two inverse maps. | S3 |
 | Univalence | a path from `(Ω, f)` to `(Ω', g)` | `ua : Equiv A B -> Path U A B` through Glue types. Transport along `ua e` computes to `e` by definition (uaβ). A path in `FinSet` is a path in `U` and a path over it in `isFinSet`, which is a proposition. | S3, S5 |
 | Bijective coupling | `g ∘ σ = f` | `couple s h : Path (Rand T) (Om, f) (Om', g)` for `s : Equiv (El Om) (El Om')` and `h : (w : El Om) -> Path T (f w) (g (s w))`. A library def from `ua`, `uaArrow` (the CTT lemma that turns pointwise paths into a path over `ua`) and Sigma paths. | S6 |
@@ -197,7 +197,10 @@ are new or change:
   `{"carrier": "A", "size": n, "index": [...]}` (S5c).
 - A type is its printed normal form, as a string (strategy-lang S1 ruling
   (b)).
-- A `Rand T` value is `{"coins": n, "values": [...]}`.
+- A `Rand T` value whose carrier is `Fin a` or `Sigma (e : Fin a) (Fin b)`
+  is `{"coins": n, "values": [...]}` (S6a): `n` is the number of coins,
+  and `values` holds the value at each coin, in the enumeration order of
+  the `FinSet` rule.
 - A path is never `null`. The writer uses the first rule that applies:
   1. a path in a universe with a finite end point:
      `{"from": A, "to": B, "transport": table}`. For `ua s` the table is `s`;
@@ -242,7 +245,12 @@ are new or change:
   the FinSet loop as a Pi def, and the `FinSet` JSON rule.
 - S6: `Rand`, its monad laws as paths, `couple`, `count`, `Bag`, `match`
   and the fiber theorem in both directions. JSON rules 2 and 3 and the
-  `Rand` rule.
+  `Rand` rule. S6a (done): the domain defs `Rand`, `randPure` and
+  `randMap`; the builtin `carrierSum` (it reduces at a literal `Fin a` or
+  `Sigma (e : Fin a) (Fin b)` carrier and stays stuck at other carriers);
+  the `Rand` JSON rule and `examples/rand.lang`. A Nat or Fin operation on
+  a glue element stays stuck (the S5c INTERNAL, R13). The top-level `Path
+  FinSet` loop stops with `OOM` at the JSON print, so it moves to S6b.
 - S7: the two HVZK examples of section 2 as instances: the real variable,
   the simulated variable and the path between them. Mutants: a wrong
   witness `w`, a wrong `s` and a non-bijective `s` must each give a check

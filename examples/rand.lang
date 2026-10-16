@@ -1,0 +1,35 @@
+-- Random variables (S6a, rulings R1 and R2 (a)). A Rand T is a pack of a
+-- coin space (a FinSet) and a map from its points to T. `langc build`
+-- prints a top-level Rand value as {"coins": n, "values": [...]} (ruling
+-- R12 (a)): n is the number of points of the carrier, and the values are
+-- the map at each point, in the enumeration order of the FinSet index.
+-- r3 is the rotation x + 1 on Fin 3: the values are 1, 2, 0.
+def r3 : Rand (Fin 3) := pack (finSetFin 3) (fun (x : Fin 3) => finAdd 3 x 1)
+-- randPure puts a value on a coin space with one point.
+def pureAt : Path Nat (card (witness (randPure Nat 7))) 1 := refl
+-- randMap applies a map to each outcome: at the coin 0 of the rotation
+-- x + 1 on Fin 3, the map x + 1 gives 2.
+def mapAt : Path (Fin 3) (payload (randMap (Fin 3) (Fin 3) (fun (x : Fin 3) => finAdd 3 x 1) (pack (finSetFin 3) (fun (x : Fin 3) => finAdd 3 x 1))) 0) 2 := refl
+-- carrierSum adds a Nat over each point of a literal carrier (ruling R7
+-- (a)). On Fin 4 the sum of k + 1 is 1 + 2 + 3 + 4 = 10. The summand is
+-- k + 1 and not k: at k = 0 the term k is 0, so a sum that skips the first
+-- point gives the same value.
+def sumAt : Path Nat (carrierSum (Fin 4) (fun (k : Fin 4) => succ (finVal 4 k))) 10 := refl
+-- On the product carrier (e : Fin 2) * Fin 3 the summand 10 e + k gives
+-- 3 * (0 + 10) + 2 * (0 + 1 + 2) = 36. The two bounds are different, so a
+-- sum that uses the first bound for the second component gives 22.
+def sumSig : Path Nat (carrierSum ((e : Fin 2) * Fin 3) (fun (p : (e : Fin 2) * Fin 3) => natAdd (natMul 10 (finVal 2 (witness p))) (finVal 3 (payload p)))) 36 := refl
+-- A Rand Nat on the coin space (e : Fin 2) * Fin 3, a FinSet by the
+-- equivalence pack e x |-> 3 e + x with Fin 6. The values are 10 e + x in
+-- the order pack 0 0, pack 0 1, .., pack 1 2: 0, 1, 2, 10, 11, 12. The two
+-- bounds are different, so an order that swaps the components changes the
+-- table.
+def Carrier23 : Type 0 := (e : Fin 2) * Fin 3
+def lift3 : (x : Fin 3) -> Fin 6 := fun (x : Fin 3) => finCase 3 x 0 1 2
+def fwd23 : (p : Carrier23) -> Fin 6 := fun (p : Carrier23) => finCase 2 (witness p) (lift3 (payload p)) (finAdd 6 (lift3 (payload p)) 3)
+def bwd23 : (k : Fin 6) -> Carrier23 := fun (k : Fin 6) => finCase 6 k (pack 0 0) (pack 0 1) (pack 0 2) (pack 1 0) (pack 1 1) (pack 1 2)
+def sec23 : (k : Fin 6) -> Path (Fin 6) (fwd23 (bwd23 k)) k := fun (k : Fin 6) => refl
+def retCurried23 : (e : Fin 2) -> (x : Fin 3) -> Path Carrier23 (bwd23 (fwd23 (pack e x))) (pack e x) := fun (e : Fin 2) => fun (x : Fin 3) => refl
+def retEta23 : (p : Carrier23) -> Path Carrier23 (bwd23 (fwd23 p)) p := fun (p : Carrier23) => retCurried23 (witness p) (payload p)
+def fs23 : FinSet := pack Carrier23 (pack 6 (trunc1 (Equiv Carrier23 (Fin 6)) (isoToEquiv Carrier23 (Fin 6) fwd23 bwd23 sec23 retEta23)))
+def r2x3 : Rand Nat := pack fs23 (fun (p : Carrier23) => natAdd (natMul 10 (finVal 2 (witness p))) (finVal 3 (payload p)))

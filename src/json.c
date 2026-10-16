@@ -252,6 +252,7 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_NAT_ADD:
   case OP_NAT_SUB:
   case OP_NAT_MUL:
+  case OP_CARRIER_SUM:
   case OP_SUCC:
   case OP_NAT_EQ:
   case OP_NAT_LE:
@@ -376,6 +377,97 @@ static int finset_json(Out *o, const Value *type, const Value *v, int *done) {
   return put_text(o, "]}");
 }
 
+/* One value of a Rand table: FN at POINT, printed at T. With FN NULL the
+   pass only counts the points. */
+static int rand_value(Out *o, const Value *fn, const Value *t, const Value *point, int first) {
+  const Value *r;
+  if (fn == NULL)
+    return 1;
+  r = apply_value(o->m, fn, point);
+  if (r == NULL || o->m->diag->set)
+    return 0;
+  return (first || put_text(o, ",")) && value_json(o, t, r);
+}
+
+/* One pass over the points of a literal carrier in enumeration order (as
+   the FinSet index): *COUNT is the number of points. It gives -1 when a
+   Sigma fiber is not a literal Fin, before it prints a value. */
+static int rand_points(Out *o, const Value *carrier, const Value *fn, const Value *t, uint64_t *count) {
+  Machine *m = o->m;
+  uint64_t i;
+  uint64_t j;
+  *count = 0;
+  if (fin_literal(carrier)) {
+    for (i = 0; i < carrier->args[0]->nat; i++)
+      if (!rand_value(o, fn, t, val_nat(m, i), (*count)++ == 0))
+        return 0;
+    return 1;
+  }
+  for (i = 0; i < carrier->dom->args[0]->nat; i++) {
+    const Value *b = closure_apply(m, carrier, val_nat(m, i));
+    if (b == NULL)
+      return 0;
+    if (!fin_literal(b))
+      return -1;
+    for (j = 0; j < b->args[0]->nat; j++) {
+      const Value *pair[2];
+      pair[0] = val_nat(m, i);
+      pair[1] = val_nat(m, j);
+      if (!rand_value(o, fn, t, val_op(m, VAL_OP, OP_PACK, 0, 0, pair, 2), (*count)++ == 0))
+        return 0;
+    }
+  }
+  return 1;
+}
+
+/* The Rand rule (S6a item 4, R12 (a)): a pack of type `Rand T` (the domain
+   def) whose witness is a FinSet pack with a carrier `Fin a` or `Sigma (e :
+   Fin a) (Fin b)` with literals prints as {"coins": n, "values": [...]}: n
+   is the number of points of the carrier, and the values are the payload
+   at each point in enumeration order, each printed at T. *DONE is 0 when
+   the rule does not apply: then the generic Sigma print runs (and refuses
+   the payload, a function). T is the arrow codomain at a fresh variable,
+   so a dependent codomain does not convert. */
+static int rand_json(Out *o, const Value *type, const Value *v, int *done) {
+  Machine *m = o->m;
+  const Value *carrier;
+  const Value *arrow;
+  const Value *t;
+  char num[24];
+  uint64_t count;
+  uint32_t k;
+  int r;
+  *done = 0;
+  for (k = 0; k < m->def_count; k++)
+    if (m->defs[k].origin == ORIGIN_DOMAIN && strcmp(m->defs[k].name, "Rand") == 0)
+      break;
+  if (k == m->def_count || !val_is(v->args[0], OP_PACK))
+    return 1;
+  arrow = closure_apply(m, type, v->args[0]);
+  if (arrow == NULL)
+    return 0;
+  if (arrow->kind != VAL_PI)
+    return 1;
+  t = closure_apply(m, arrow, val_var(m, 0u));
+  if (t == NULL)
+    return 0;
+  if (!conv_values(m, 1u, type, apply_value(m, def_value(m, k), t)))
+    return !m->diag->set;
+  carrier = v->args[0]->args[0];
+  if (!fin_literal(carrier) && !(carrier->kind == VAL_SIGMA && fin_literal(carrier->dom)))
+    return 1;
+  r = rand_points(o, carrier, NULL, t, &count);
+  if (r <= 0)
+    return r == -1;
+  snprintf(num, sizeof num, "%llu", (unsigned long long)count);
+  if (!put_text(o, "{\"coins\":") || !put_text(o, num) || !put_text(o, ",\"values\":["))
+    return 0;
+  if (rand_points(o, carrier, v->args[1], t, &count) != 1)
+    return 0;
+  *done = 1;
+  return put_text(o, "]}");
+}
+
 /* The payload type is the Sigma body at the witness. */
 static int pack_json(Out *o, const Value *type, const Value *v) {
   const Value *payload;
@@ -385,6 +477,10 @@ static int pack_json(Out *o, const Value *type, const Value *v) {
   if (type->dom->kind == VAL_UNIV && !finset_json(o, type, v, &done))
     return 0;
   if (type->dom->kind == VAL_UNIV && done)
+    return 1;
+  if (type->dom->kind == VAL_SIGMA && !rand_json(o, type, v, &done))
+    return 0;
+  if (type->dom->kind == VAL_SIGMA && done)
     return 1;
   if (!put_text(o, "{\"witness\":") || !value_json(o, type->dom, v->args[0]))
     return 0;

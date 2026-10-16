@@ -70,6 +70,7 @@ starts again for each instance.
 | `List A` | An array |
 | `Sigma (x : A) B` | `{"witness": w, "payload": p}`. The payload type is `B` at the witness. |
 | `FinSet` (`Sigma (A : Type 0) (isFinSet A)`), a `Fin a` or `Sigma (e : Fin a) (Fin b)` carrier and a `trunc1` point | `{"carrier": "A", "size": n, "index": [k0, ...]}`: the forward map of the equivalence at each point of the carrier, in enumeration order (`0 .. a-1`; `pack 0 0`, `pack 0 1`, .., `pack (a-1) (b-1)`). In `examples/finset.lang`, `fin3` gives `{"carrier": "Fin 3", "size": 3, "index": [0, 1, 2]}` and `prodFinSet11` the 121 numbers in order. An entry that does not compute to a number is refused (`JSON_VALUE`). Any other carrier is a type and is refused (`JSON_VALUE`). |
+| `Rand T` (`Sigma (Om : FinSet) (El Om -> T)`), a `Fin a` or `Sigma (e : Fin a) (Fin b)` carrier | `{"coins": n, "values": [v0, ...]}` (S6a): `n` is the number of points of the carrier, and `values` holds the JSON at `T` of the function at each point, in the enumeration order of the `FinSet` row. In `examples/rand.lang`, `r3` gives `{"coins": 3, "values": [1, 2, 0]}` and `r2x3` (over `(e : Fin 2) * Fin 3`) gives `{"coins": 6, "values": [0, 1, 2, 10, 11, 12]}`. At any other carrier the `Sigma` row applies, and the build refuses the function (`JSON_VALUE`). |
 | `PathP (fun i => A) a b`, a body without `i` | `{"refl": a}` (rule 5). A point of a Pi type or a universe is its printed term, as a string. `Path A a b` is `PathP (fun _ => A) a b`. |
 | `PathP (fun _ => Type 0) A B`, with `A` = `Fin n` and a literal `n` | `{"from": "A", "to": "B", "transport": [t0, ...]}` (rule 1, before rules 5 and 6). `tk` is the value in `B` of `transp (fun i => p @ i) i0 k`, for each `k` below `n`. For a `ua` line, for example `ua (Fin 3) (Fin 3) e`, the table is `witness e` at each `k`. For a line made by `hcomp` in `Type 0`, the table is the composite transport: `transTwoLoops` in `examples/univ.lang`, two `loopRot1` lines, gives `[2, 0, 1]`. When a table value does not compute to a number or a canonical value, rules 5 and 6 apply. |
 | `Glue A phi sys`, with no true key | Refused (`JSON_VALUE`): a Glue element has no JSON form. A Glue type with a true key is its branch type `T`. |
@@ -105,6 +106,15 @@ computes to a literal prints as the literal. In an argument position, a
 typed identity preserves the case result type so printed path and function
 cases can be checked again. The 64-argument application limit does not
 apply to `finCase`, whose arguments include its entire case table.
+
+`carrierSum A f` (S6a), with `A : Type 0` and `f : A -> Nat`, is the sum
+of `f` over the points of `A`. It reduces only at a literal `Fin a` or
+`Sigma (e : Fin a) (Fin b)` carrier, in the enumeration order of the
+`FinSet` row. At other carriers it stays stuck. The kernel does not prove
+that the sum is invariant under a bijection of the carrier: this is a
+trust point (`SPEC.md` section 8). A Nat or Fin operation on a glue
+element stays stuck (S6a), so a transport of a point along a `ua` line of
+`Fin n` prints its term (rule 6).
 
 ## Glue
 

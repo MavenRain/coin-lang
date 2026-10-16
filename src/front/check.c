@@ -83,7 +83,8 @@ typedef enum {
   RULE_DEC_EQ,
   RULE_GLUE,
   RULE_GLUE_ELEM,
-  RULE_UNGLUE
+  RULE_UNGLUE,
+  RULE_CARRIER_SUM
 } Rule;
 
 typedef struct {
@@ -146,6 +147,7 @@ static const Builtin BUILTINS[] = {
   {"Glue", 3, RULE_GLUE, OP_GLUE, OP_NAT, 0},
   {"glue", 2, RULE_GLUE_ELEM, OP_GLUE_ELEM, OP_NAT, 0},
   {"unglue", 1, RULE_UNGLUE, OP_UNGLUE, OP_NAT, 0},
+  {"carrierSum", 2, RULE_CARRIER_SUM, OP_CARRIER_SUM, OP_NAT, 0},
   {"natAdd", 2, RULE_NAT2, OP_NAT_ADD, OP_NAT, 0},
   {"natSub", 2, RULE_NAT2, OP_NAT_SUB, OP_NAT, 0},
   {"natMul", 2, RULE_NAT2, OP_NAT_MUL, OP_NAT, 0},
@@ -1704,6 +1706,16 @@ static const Core *rule_fin_op(Call *k) {
   return op3(c, k->b->op, 0, k->b->arity, n, x, y);
 }
 
+/* carrierSum A f (S6a, R7 (a)): A : Type 0, f : A -> Nat; the result is
+   Nat. */
+static const Core *rule_carrier_sum(Call *k) {
+  Checker *c = k->c;
+  const Core *a = check(c, k->args[0], val_univ(c->m, 0));
+  const Core *f = a == NULL ? NULL : check(c, k->args[1], val_arrow(c->m, here(c, a), nat_type(c)));
+  k->type = op_result(c, k->b, NULL);
+  return op3(c, OP_CARRIER_SUM, 0, 2, a, f, NULL);
+}
+
 /* ENV with the entry at index IX set to V: the entries before IX are
    copied, the tail is shared. */
 static const Env *env_with(Machine *m, const Env *env, uint32_t ix, const Value *v) {
@@ -1891,6 +1903,8 @@ static const Core *rule(Call *k) {
     return rule_glue_elem(k);
   case RULE_UNGLUE:
     return rule_unglue(k);
+  case RULE_CARRIER_SUM:
+    return rule_carrier_sum(k);
   case RULE_NAT2:
     return rule_nat2(k);
   case RULE_FIN_OP:

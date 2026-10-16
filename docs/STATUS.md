@@ -1294,3 +1294,120 @@ a compile error. J13 to J17 are the S5b mutants (the S5b table).
 | J18 | `finset_json`: the size print is `size->nat - 1u` | `FAIL build examples/finset.lang: the output differs from test/json/finset.json` (gate 1 failure); C case `FAIL FinSet index table: expected JSON containing "carrier":"Fin 3","size":3,"index":[0,1,2]` (path regressions 1 failed) |
 | J19 | `finset_json`: the Sigma loop point is `pack j i` (payload-major) | `FAIL build examples/finset.lang: the output differs from test/json/finset.json` (gate 1 failure); the C case passes (a `Fin 3` carrier does not reach the Sigma loop) |
 | J20 | `finset_json`: the Fin loop starts at `i = 1` (the first entry dropped) | `FAIL build examples/finset.lang: the output differs from test/json/finset.json` (gate 1 failure); C case `FAIL FinSet index table` (`"index":[0,1,2]` absent; path regressions 1 failed) |
+
+## S6a
+
+S6a (the kernel fix, `Rand` and the carrier sum: items 1 to 4 of the S6
+kickoff) is complete, UNSTAGED until the USER commit (one commit for
+S6a, R15 (a)). The S6 rulings R1 to R15 are all (a).
+
+Item 1 (R13, sessions 1 and 2): `src/front/eval.c` adds `nat_blocked`.
+When the argument of a Nat or Fin operation is a glue element
+(`OP_GLUE_ELEM`), the operation is stuck (`VAL_STUCK`); other arguments
+go to `blocked()` as before. It replaces `blocked()` at five sites:
+`nat_args` (both arguments), `nat_succ`, `fin_add`, `fin_args3` and
+`fin_case`.
+Before the fix, `langc eval` and `langc build` stopped with `INTERNAL:
+... a Nat operation on a value that is not a Nat` (the S5c deviation).
+The C case "Nat operation on a glue element stays stuck" transports `0`
+along the `ua` line `loopRot1 @ (i /\ j)` and back. Rule 6 prints the
+term, and the term holds `(finAdd 3 (finAdd 3 (glue (fun (_ : I) => [ ~i
+-> 0, i -> 1 ]) 1) 1) 2)`.
+The review also covers the right operand with "finAdd right Glue operand
+stays stuck": the inverse rotation uses `finAdd 3 2 r`, which previously
+stopped with `INTERNAL` when `r` was a glue element.
+
+Item 2 (session 3): `domain/domain.lang` adds `Rand : (T : Type 0) ->
+Type 1 := fun (T : Type 0) => Sigma (Om : FinSet) (El Om -> T)` (R1
+(a)), `randPure` (the coin space `finSetFin 1`) and `randMap` (the same
+coin space, the map composed). The kit builtins `pure`, `map` and `bind`
+stay (R2 (a)). The domain grows from 182 to 190 lines. The check refusal
+`rand-type0.lang` (`Rand` as a family into `Type 0`: `TYPE_MISMATCH`).
+
+Item 3 (sessions 3 and 4): the builtin `carrierSum : (A : Type 0) -> (A
+-> Nat) -> Nat` (R7 (a)): `OP_CARRIER_SUM` in `core.h`, `OP_NAMES`,
+`OP_ARITY`, the three `-Wswitch-enum` switches (`transp_data`,
+`reduce_op`, `op_json`), `RULE_CARRIER_SUM` and its `BUILTINS` row in
+`check.c`, and `carrier_sum` with `sum_point` in `eval.c`. It reduces at
+a literal `Fin a` (the points `0 .. a-1`) and at a literal `Sigma (e :
+Fin a) (Fin b)` (witness-major, the `FinSet` order). At other carriers
+it stays stuck. The sum is a trust point (`SPEC.md` section 8). Tests:
+the examples `sumAt` (`succ (finVal 4 k)` over `Fin 4`: 10) and `sumSig`
+(`10 e + k` over `(e : Fin 2) * Fin 3`: 36), the evals `rand sumAt => fun
+_ => 10` and `rand sumSig => fun _ => 36`, the check refusal
+`carrier-sum-codomain.lang` (`TYPE_MISMATCH`) and the C case "carrierSum
+stays stuck at a neutral carrier" (`PATH_END`).
+
+Item 4 (session 5): the `Rand` JSON rule in `src/json.c` (R12 (a)):
+`rand_value`, `rand_points` and `rand_json`, before `pack_json`.
+`pack_json` calls `rand_json` when the witness type is a Sigma (the
+`FinSet` rule stays at a universe). `rand_json` finds the domain `Rand`
+(`ORIGIN_DOMAIN`), takes `T` from the codomain of the function type and
+converts the instance type with `Rand T`. A pack whose carrier is `Fin
+a` or `Sigma (e : Fin a) (Fin b)` with literals prints `{"coins": n,
+"values": [...]}`: the number of points, then the value of the function
+at each point at `T`, in the `FinSet` order. At other carriers the
+generic Sigma print runs and refuses the function (`JSON_VALUE`).
+`examples/rand.lang` (7 instances; `test/json/rand.json`): `r3`
+(`{"coins":3,"values":[1,2,0]}`), `pureAt` (`{"refl":1}`), `mapAt`
+(`{"refl":2}`), `sumAt`, `sumSig`, `fs23` and `r2x3`
+(`{"coins":6,"values":[0,1,2,10,11,12]}` over `(e : Fin 2) * Fin 3`).
+The C case "Rand values table" (the `r2x3` values at the asymmetric
+carrier `(e : Fin 2) * Fin 3`).
+
+Gate: `make check` is GREEN at examples 22, parse 11, check 64, evals
+56, json 22, build refusals 4, regressions 6, printer 2, path
+regressions 62 C cases (0 failed). The clang `-Wswitch-enum` pass is
+clean. The dash scan is clean.
+
+Docs: `docs/PLAN.md` rows 35 and 36 (R1, R2, R3 and R7), the section 6
+`Rand` bullet and section 7 (S6a done). `SPEC.md` section 8: the
+`carrierSum` trust point (R7 (a)). `docs/host/README.md`: the `Rand` row
+after the `FinSet` row, and a `carrierSum` paragraph after the `langc
+eval` notes.
+
+Deviations from the plan (the S6 kickoff sections 1.1, 2 and 4; the
+sessions 1 to 5 of the S6 HANDOFF give the probes):
+
+- The L1 site is `nat_blocked`, a new helper at the Nat and Fin argument
+  sites, not `scrut_of` (about 12 callers in transp, eta and hcomp).
+- The item 1 target "Path FinSet loop builds" is not reached. With the
+  fix, the build of the top-level loop `loopTop : Path FinSet (finSetFin
+  3) (finSetFin 3)` stops with `OOM: loopTop: the arena limit is
+  reached` (1 GiB, about 4 s; S5c: `INTERNAL`). The cause is the
+  `quote_value` call in `path_json` on the loop body at the fresh
+  interval variable: the transported `trunc1` equivalence along the Glue
+  line has a very large normal form. Past it, rule 6 would print a Glue
+  term (`JSON_TYPE`). The target moves to S6b item 6 (rule 2 on the
+  Sigma path, rule 1 on the type component).
+- So the R13 C case is "Nat operation on a glue element stays stuck"
+  (the back transport of a glue element, printed by rule 6), not "Path
+  FinSet loop builds".
+- `sumAt` sums `succ (finVal 4 k)` (10), not `finVal 4 k` (6): `finVal 4
+  0` is 0, so L2 (the loop starts at 1) gives 6 too.
+- In `carrier-sum-codomain.lang` the summand binder has the neutral
+  carrier `A` (`fun (x : A) => x`: `TYPE_MISMATCH`). At a literal `Fin 2`
+  binder, the finAll fallback fires in the inline lambda and the code is
+  `FIN_CASE`.
+- The C case for a stuck `carrierSum` is a `PATH_END` refusal (`Path Nat
+  (carrierSum A f) 0` at a neutral `A`), not a round trip: under L4 the
+  `0` replays and converts, so a round trip does not kill L4.
+- `examples/rand.lang` has one instance more than the plan: `fs23`, the
+  `FinSet` of `(e : Fin 2) * Fin 3` (the index table `[0 .. 5]`) that
+  `r2x3` uses. The json count stays 22 (`rand.json` is one file).
+
+Mutants: L1 to L6 ran by hand, one at a time (`sd -s` at one site,
+`make -B check`, then `build/path-regressions` under the mutant, since a
+gate failure stops `make` before it; `sd -s` back). The `shasum` of the
+file before and after is equal: `eval.c` 4481ab5c (L1, on the session 2
+tree) and 6c1388b2 (L2 to L4), `json.c` 2aef97e8 (L5 and L6). Each kill
+came from a repo test, not from a compile error.
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| L1 | `nat_blocked`: the glue element test removed (`if (0 && val_is(s, OP_GLUE_ELEM))`) | C case "Nat operation on a glue element stays stuck" (`INTERNAL` on `back`) |
+| L2 | `carrierSum` at `Fin a`: the loop starts at 1 | `examples/rand.lang` (`PATH_END: sumAt: the path at i1 is 9, but the type needs 10`); the evals `rand pureAt`, `rand sumAt` and `rand sumSig`; the JSON of `examples/rand.lang` |
+| L3 | `carrierSum` at a Sigma: the inner bound is `a` (`t->dom->args[0]->nat`) | `examples/rand.lang` (`PATH_END: sumSig: ... is 22, but the type needs 36`); the evals; the JSON of `examples/rand.lang` |
+| L4 | `carrierSum` gives 0 at a carrier that is not a literal (`return val_nat(m, 0);`) | C case "carrierSum stays stuck at a neutral carrier" only (the rest of the gate is GREEN) |
+| L5 | `Rand` JSON: the values payload-major (`pack j i`) | `FAIL build examples/rand.lang: the output differs from test/json/rand.json`; C case "Rand values table" |
+| L6 | `Rand` JSON: `coins` is the table length minus 1 | the JSON of `examples/rand.lang`; C case "Rand values table" |
