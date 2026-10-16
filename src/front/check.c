@@ -80,6 +80,7 @@ typedef enum {
   RULE_FIN,
   RULE_FIN_OP,
   RULE_FIN_CASE,
+  RULE_DEC_EQ,
   RULE_GLUE,
   RULE_GLUE_ELEM,
   RULE_UNGLUE
@@ -107,6 +108,8 @@ static const Builtin BUILTINS[] = {
   {"finMul", 3, RULE_FIN_OP, OP_FIN_MUL, OP_FIN, 0},
   {"finVal", 2, RULE_FIN_OP, OP_FIN_VAL, OP_NAT, 0},
   {"finEq", 3, RULE_FIN_OP, OP_FIN_EQ, OP_FIN, 2},
+  {"decEqFin", 3, RULE_DEC_EQ, OP_DEC_EQ_FIN, OP_SUM, 0},
+  {"decEqNat", 2, RULE_DEC_EQ, OP_DEC_EQ_NAT, OP_SUM, 0},
   {"finCase", 2, RULE_FIN_CASE, OP_FIN_CASE, OP_FIN, 0},
   {"I", 0, RULE_INTERVAL, OP_INTERVAL, OP_NAT, 0},
   {"i0", 0, RULE_IEND, OP_INTERVAL, OP_INTERVAL, 0},
@@ -1798,6 +1801,25 @@ static const Core *rule_fin_case(Call *k) {
   }
 }
 
+/* decEqFin n a b and decEqNat a b (S5b item 7): n : Nat, a and b : Fin n
+   (decEqFin) or : Nat (decEqNat). The type is the value of `Sum (Path T a
+   b) ((Path T a b) -> Fin 0)`, T the type of a and b. It converts with the
+   domain `Dec (Path T a b)`. The line of the path is T quoted under the
+   binder, as in rule_path. */
+static const Core *rule_dec_eq(Call *k) {
+  Checker *c = k->c;
+  int fin = k->b->op == OP_DEC_EQ_FIN;
+  const Core *n = fin ? check(c, k->args[0], nat_type(c)) : NULL;
+  const Value *t = fin ? (n == NULL ? NULL : tyop(c, OP_FIN, 1, here(c, n), NULL, NULL)) : nat_type(c);
+  const Core *x = t == NULL ? NULL : check(c, k->args[fin ? 1u : 0u], t);
+  const Core *y = x == NULL ? NULL : check(c, k->args[fin ? 2u : 1u], t);
+  const Core *path = y == NULL ? NULL : core_ends(c, CORE_PATHP, "_", NULL, quote_value(c->m, c->level + 1u, t), x, y);
+  const Core *empty = path == NULL ? NULL : op3(c, OP_FIN, 0, 1, core_leaf(c, CORE_NAT, 0), NULL, NULL);
+  const Core *dec = path == NULL ? NULL : op3(c, OP_SUM, 0, 2, path, core_bind(c, CORE_PI, "_", path, empty), NULL);
+  k->type = here(c, dec);
+  return fin ? op3(c, k->b->op, 0, 3, n, x, y) : op3(c, k->b->op, 0, 2, x, y, NULL);
+}
+
 static const Core *rule(Call *k) {
   switch (k->b->rule) {
   case RULE_TYPE0:
@@ -1875,6 +1897,8 @@ static const Core *rule(Call *k) {
     return rule_fin_op(k);
   case RULE_FIN_CASE:
     return rule_fin_case(k);
+  case RULE_DEC_EQ:
+    return rule_dec_eq(k);
   case RULE_FIN:
     return rule_fin(k);
   }

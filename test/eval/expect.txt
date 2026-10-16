@@ -40,3 +40,9 @@ quot toTrunc3 => trunc0 (Fin 4) 2
 fin valAt => fun _ => 3
 fin mulAt => fun _ => 10
 fin parity2 3 => 1
+dec toNat1 => 1
+dec sq => fun j => fun i => 0
+dec sqFin => fun j => fun i => 1
+dec isRight01 => fun _ => 1
+dec isRightNat => fun _ => 1
+dec dec00 => fun _ => inl (fun _x0 => 0)

@@ -67,6 +67,8 @@ typedef enum {
   OP_FIN_VAL,  /* finVal n a: the number a as a Nat */
   OP_FIN_EQ,   /* finEq n a b: 1 in Fin 2 when a = b, else 0 */
   OP_FIN_CASE, /* finAll case: k, body0, ..., body(n-1); body j at the literal j */
+  OP_DEC_EQ_FIN, /* decEqFin n a b: inl refl when a = b, else inr of the refutation (S5b) */
+  OP_DEC_EQ_NAT, /* decEqNat a b: the same at Nat */
   OP_GLUE,     /* Glue A phi sys: a type; sys as in OP_HCOMP, each branch pack T e */
   OP_GLUE_ELEM, /* glue: phi, sys, a; sys as in OP_HCOMP, each branch t */
   OP_UNGLUE    /* unglue: A, phi, sys, g; stuck when no rule applies */

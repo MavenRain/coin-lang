@@ -363,6 +363,11 @@ int main(void) {
     "  | hhSquare (hhU : HH) (hhV : Path HH hhU hhU) (i : I) (j : I) [ ~i -> hhNode hhU hhU (fun (k : I) => hhV @ (j /\\ ~j /\\ k /\\ ~k)),\n"
     "      i -> hhNode hhU hhU (fun (k : I) => hhV @ (j /\\ ~j /\\ k /\\ ~k)), ~j -> hhNode hhU hhU refl, j -> hhNode hhU hhU refl ]\n",
     "def original : HH -> HH := fun (z : HH) => fold hhBase (fun (x : HH) (y : HH) (p : Path HH x y) => hhNode x y p) (fun (x : HH) (p : Path HH x x) => fun (a : I) => fun (b : I) => hhSquare x p a b) z\n");
+  /* S5b item 7: the refutation of decEqFin is a closure. Its printed form
+     must check again at the declared type (J15: Fin 0 and Unit swapped in
+     the line fail with TYPE_MISMATCH at i0). */
+  failed += !domain_roundtrip("decEqFin inr round-trips", "",
+    "def d : Dec (Path (Fin 3) 0 1) := decEqFin 3 0 1\n");
   printf("path regressions: %d failed\n", failed);
   return failed != 0;
 }

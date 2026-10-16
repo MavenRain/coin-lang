@@ -128,3 +128,44 @@ def uaArrow : (A : Type 0) -> (B : Type 0) -> (C : Type 0) -> (e : Equiv A B) ->
 -- Fin subtraction (S5a, R3 (a)): a - b mod n as a plus the negation of b.
 def finSub : (n : Nat) -> Fin n -> Fin n -> Fin n :=
   fun (n : Nat) (a b : Fin n) => finAdd n a (finNeg n b)
+
+-- Decidability (S5b, R3 (a)): Empty is Fin 0 and absurd is its empty case.
+-- Not A is a map into Empty. Dec A holds a proof or a refutation. Stable A
+-- turns a double negation into a proof; decStable gives it by either.
+-- isPropNot: two maps into Empty are equal by funExt, since each value of
+-- Empty is absurd.
+def Empty : Type 0 := Fin 0
+def absurd : (A : Type 0) -> Empty -> A := fun (A : Type 0) (k : Fin 0) => finCase 0 k
+def Not : Type 0 -> Type 0 := fun (A : Type 0) => A -> Empty
+def Dec : Type 0 -> Type 0 := fun (A : Type 0) => Sum A (Not A)
+def Stable : Type 0 -> Type 0 := fun (A : Type 0) => Not (Not A) -> A
+def decStable : (A : Type 0) -> Dec A -> Stable A :=
+  fun (A : Type 0) (d : Dec A) (nn : Not (Not A)) => either (fun (a : A) => a) (fun (na : Not A) => absurd A (nn na)) d
+def isPropNot : (A : Type 0) -> isProp (Not A) :=
+  fun (A : Type 0) (f g : Not A) => funExt (fun (a : A) => absurd (Path Empty (f a) (g a)) (f a))
+
+-- Hedberg (S5b, R4 (a)): a type with decidable equality is a set, by the
+-- agda/cubical Stable route. hedbergStable: each path type from a is
+-- stable, by decStable. hedbergMap: the stable map on Path A a x.
+-- hedbergConst: the map is constant, since isPropNot equates the two
+-- double negations. hedbergSquare: the map over a path p, a PathP from the
+-- map at refl to the map at p. hedberg: one hcomp with four faces, each a
+-- at k = i0; the lid is the square with the sides p, q and the ends a, b.
+-- isSetNat and isSetFin are the two instances.
+def hedbergStable : (A : Type 0) -> ((a : A) -> (b : A) -> Dec (Path A a b)) -> (a : A) -> (x : A) -> Stable (Path A a x) :=
+  fun (A : Type 0) (dec : (a : A) -> (b : A) -> Dec (Path A a b)) (a : A) (x : A) => decStable (Path A a x) (dec a x)
+def hedbergMap : (A : Type 0) -> ((a : A) -> (b : A) -> Dec (Path A a b)) -> (a : A) -> (x : A) -> Path A a x -> Path A a x :=
+  fun (A : Type 0) (dec : (a : A) -> (b : A) -> Dec (Path A a b)) (a : A) (x : A) (p : Path A a x) => hedbergStable A dec a x (fun (h : Not (Path A a x)) => h p)
+def hedbergConst : (A : Type 0) -> (dec : (a : A) -> (b : A) -> Dec (Path A a b)) -> (a : A) -> (x : A) -> (p : Path A a x) -> (q : Path A a x) -> Path (Path A a x) (hedbergMap A dec a x p) (hedbergMap A dec a x q) :=
+  fun (A : Type 0) (dec : (a : A) -> (b : A) -> Dec (Path A a b)) (a : A) (x : A) (p : Path A a x) (q : Path A a x) => fun (k : I) => hedbergStable A dec a x (isPropNot (Not (Path A a x)) (fun (h : Not (Path A a x)) => h p) (fun (h : Not (Path A a x)) => h q) @ k)
+def hedbergSquare : (A : Type 0) -> (dec : (a : A) -> (b : A) -> Dec (Path A a b)) -> (a : A) -> (b : A) -> (p : Path A a b) -> PathP (fun (j : I) => Path A a (p @ j)) (hedbergMap A dec a a (fun (_ : I) => a)) (hedbergMap A dec a b p) :=
+  fun (A : Type 0) (dec : (a : A) -> (b : A) -> Dec (Path A a b)) (a : A) (b : A) (p : Path A a b) => fun (j : I) => hedbergMap A dec a (p @ j) (fun (i : I) => p @ (i /\ j))
+def hedberg : (A : Type 0) -> ((a : A) -> (b : A) -> Dec (Path A a b)) -> isSet A :=
+  fun (A : Type 0) (dec : (a : A) -> (b : A) -> Dec (Path A a b)) (a : A) (b : A) (p : Path A a b) (q : Path A a b) => fun (j : I) => fun (i : I) =>
+    hcomp A (~i \/ i \/ ~j \/ j) (fun (k : I) => [
+      ~i -> hedbergMap A dec a a (fun (_ : I) => a) @ k,
+      i -> hedbergConst A dec a b p q @ j @ k,
+      ~j -> hedbergSquare A dec a b p @ i @ k,
+      j -> hedbergSquare A dec a b q @ i @ k ]) a
+def isSetNat : isSet Nat := hedberg Nat decEqNat
+def isSetFin : (n : Nat) -> isSet (Fin n) := fun (n : Nat) => hedberg (Fin n) (decEqFin n)

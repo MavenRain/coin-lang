@@ -232,7 +232,9 @@ are new or change:
   and an elimination of `Trunc0` into a type without an `isSet` proof.
 - S5: the base span. S5a (done): `finCase`, `finVal`, `finMul`, `succ`
   and `finEq`, `natLe` and `natEq` into `Fin 2`, the removal of `Flag`
-  (`natSub` stays). S5b: decidable equality with evidence. S5c, the
+  (`natSub` stays). S5b (done): `Empty`, `Not`, `Dec` and `Stable`,
+  `decEqFin` and `decEqNat` with evidence (a refutation is a transport,
+  not an axiom), `hedberg`, `isSetNat` and `isSetFin`. S5c, the
   library: `FinSet`, `El`, the `FinSet` of `Fin n`, of a Sigma, and of
   `Fin 2 * Fin 24`.
 - S6: `Rand`, its monad laws as paths, `couple`, `count`, `Bag`, `match`

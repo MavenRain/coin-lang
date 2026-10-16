@@ -27,6 +27,7 @@ static const char *const OP_NAMES[] = {
   [OP_SYSTEM] = "system", [OP_HCOMP] = "hcomp", [OP_FIN] = "Fin",
   [OP_FIN_ADD] = "finAdd", [OP_FIN_NEG] = "finNeg", [OP_FIN_MUL] = "finMul",
   [OP_FIN_VAL] = "finVal", [OP_FIN_EQ] = "finEq", [OP_FIN_CASE] = "finCase",
+  [OP_DEC_EQ_FIN] = "decEqFin", [OP_DEC_EQ_NAT] = "decEqNat",
   [OP_GLUE] = "Glue", [OP_GLUE_ELEM] = "glue", [OP_UNGLUE] = "unglue"
 };
 
@@ -47,7 +48,8 @@ static const unsigned char OP_ARITY[] = {
   [OP_INTERVAL] = 0, [OP_TRANSP] = 3,
   [OP_SYSTEM] = VARIES, [OP_HCOMP] = 4, [OP_FIN] = 1, [OP_FIN_ADD] = 3,
   [OP_FIN_NEG] = 2, [OP_FIN_MUL] = 3, [OP_FIN_VAL] = 2, [OP_FIN_EQ] = 3,
-  [OP_FIN_CASE] = VARIES, [OP_GLUE] = 3, [OP_GLUE_ELEM] = 3,
+  [OP_FIN_CASE] = VARIES, [OP_DEC_EQ_FIN] = 3, [OP_DEC_EQ_NAT] = 2,
+  [OP_GLUE] = 3, [OP_GLUE_ELEM] = 3,
   [OP_UNGLUE] = 4
 };
 
@@ -1239,6 +1241,116 @@ static const Value *fin_eq(Machine *m, const Value *const *a, uint32_t n) {
   return eq_bit(m, x % k, y % k);
 }
 
+/* S5b item 7: decEqFin and decEqNat build a core term and evaluate it. The
+   two builders below are the quote helpers at the end of this file. */
+static Core *new_core(Machine *m, CoreKind kind);
+static const Core *core_leaf(Machine *m, CoreKind kind, uint64_t nat);
+
+/* A core name with a copy of its N arguments; NULL when one is NULL. */
+static const Core *core_opn(Machine *m, Op op, const Core *const *args, uint32_t n) {
+  const Core **copy = arena_alloc(m->arena, ((size_t)n + 1u) * sizeof *copy);
+  Core *c;
+  uint32_t i;
+  if (copy == NULL) {
+    oom(m);
+    return NULL;
+  }
+  for (i = 0; i < n; i++) {
+    if (args[i] == NULL)
+      return NULL;
+    copy[i] = args[i];
+  }
+  c = new_core(m, CORE_OP);
+  if (c == NULL)
+    return NULL;
+  c->op = op;
+  c->args = copy;
+  c->argc = n;
+  return c;
+}
+
+/* fun NAME => B: a LAM or a PLAM. */
+static const Core *core_binder(Machine *m, CoreKind kind, const char *name, const Core *b) {
+  Core *c = b == NULL ? NULL : new_core(m, kind);
+  if (c == NULL)
+    return NULL;
+  c->name = name;
+  c->b = b;
+  return c;
+}
+
+/* The variable at de Bruijn index INDEX. */
+static const Core *core_var(Machine *m, uint32_t index) {
+  Core *c = new_core(m, CORE_VAR);
+  if (c != NULL)
+    c->index = index;
+  return c;
+}
+
+/* The core term `fun p => transp (fun i => finCase 2 (E (p @ i)) (Fin 0)
+   Unit) i0 unit`: the refutation of `Path T X Y` at the literals X and Y,
+   with E = finEq K X when FIN, else natEq X. Under the two binders p is
+   index 1 and i is index 0. The ends of p are the literals. */
+static const Core *refute_core(Machine *m, int fin, uint64_t k, uint64_t x, uint64_t y) {
+  const Core *args[3];
+  const Core *zero = core_leaf(m, CORE_NAT, 0);
+  const Core **ends = arena_alloc(m->arena, 2u * sizeof *ends);
+  Core *at = ends == NULL ? NULL : new_core(m, CORE_PAPP);
+  Core *cases;
+  if (ends == NULL) {
+    oom(m);
+    return NULL;
+  }
+  if (at == NULL)
+    return NULL;
+  ends[0] = core_leaf(m, CORE_NAT, x);
+  ends[1] = core_leaf(m, CORE_NAT, y);
+  at->a = core_var(m, 1);
+  at->b = core_var(m, 0);
+  at->args = ends;
+  at->argc = 2;
+  if (ends[0] == NULL || ends[1] == NULL || at->a == NULL || at->b == NULL)
+    return NULL;
+  args[0] = core_leaf(m, CORE_NAT, k);
+  args[1] = core_leaf(m, CORE_NAT, x);
+  args[2] = at;
+  args[0] = fin ? core_opn(m, OP_FIN_EQ, args, 3) : core_opn(m, OP_NAT_EQ, args + 1, 2);
+  args[1] = core_opn(m, OP_FIN, &zero, 1);
+  args[2] = core_opn(m, OP_UNIT, NULL, 0);
+  cases = (Core *)core_opn(m, OP_FIN_CASE, args, 3);
+  if (cases == NULL)
+    return NULL;
+  cases->a = core_leaf(m, CORE_UNIV, 0);
+  if (cases->a == NULL)
+    return NULL;
+  args[0] = core_binder(m, CORE_PLAM, "i", cases);
+  args[1] = core_leaf(m, CORE_IZERO, 0);
+  args[2] = core_opn(m, OP_UNIT_VAL, NULL, 0);
+  return core_binder(m, CORE_LAM, "p", core_opn(m, OP_TRANSP, args, 3));
+}
+
+/* decEqFin n a b and decEqNat a b (S5b item 7). At literals, the value of
+   `inl refl` when a = b, else of the refutation of refute_core: each is a
+   core term with the literals in place, evaluated in the empty
+   environment, so the result is an ordinary closure that prints and checks
+   again. A neutral argument leaves the operation stuck (fin_args3 and
+   nat_args). A[0] is n for decEqFin. */
+static const Value *dec_eq(Machine *m, Op op, const Value *const *a, uint32_t n) {
+  const Value *out;
+  uint64_t k = 0;
+  uint64_t x = 0;
+  uint64_t y = 0;
+  int fin = op == OP_DEC_EQ_FIN;
+  int ok = fin ? fin_args3(m, op, a, n, &k, &x, &y, &out) : nat_args(m, op, a, n, &x, &y, &out);
+  const Core *body;
+  if (!ok)
+    return out;
+  x = fin ? x % k : x;
+  y = fin ? y % k : y;
+  body = x == y ? core_binder(m, CORE_PLAM, "_", core_leaf(m, CORE_NAT, x)) : refute_core(m, fin, k, x, y);
+  return eval_core(m, NULL, core_opn(m, x == y ? OP_INL : OP_INR, &body, 1));
+}
+
 /* The finAll case term: k, body0, ..., body(n-1). Body j at the literal j;
    a neutral k keeps the full argument list. At a literal, eval_op evals
    only the body of that literal, so a literal seldom gets here. */
@@ -1751,6 +1863,8 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
   case OP_FIN_VAL:
   case OP_FIN_EQ:
   case OP_FIN_CASE:
+  case OP_DEC_EQ_FIN:
+  case OP_DEC_EQ_NAT:
   case OP_GLUE_ELEM:
   case OP_UNGLUE:
     return internal(m, "a transport along a line that is not a type");
@@ -2693,6 +2807,9 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return fin_eq(m, a, n);
   case OP_FIN_CASE:
     return fin_case(m, a, n);
+  case OP_DEC_EQ_FIN:
+  case OP_DEC_EQ_NAT:
+    return dec_eq(m, op, a, n);
   case OP_NAT_EQ:
   case OP_NAT_LE:
     return nat_test(m, op, a, n);

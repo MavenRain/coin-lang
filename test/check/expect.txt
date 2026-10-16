@@ -58,3 +58,4 @@ trunc0-no-set.lang TYPE_MISMATCH
 fin-case-arity.lang FIN_CASE
 fin-case-branch.lang FIN_CASE
 flag-gone.lang NAME_UNKNOWN
+fin-one-not-empty.lang FIN_CASE

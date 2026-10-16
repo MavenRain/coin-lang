@@ -1088,3 +1088,109 @@ refusals 60, evals 42, JSON builds 19, build refusals 2, regressions 6,
 printer regressions 2, C cases 50). The clang warning pass and the C suite
 under AddressSanitizer and UndefinedBehaviorSanitizer pass. No CI or test
 gate was weakened. There are no remaining blockers from this review.
+
+## S5b
+
+S5b (decidable equality with evidence and Hedberg: `Empty`, `Not`, `Dec`,
+`Stable`, `decEqFin`, `decEqNat`, `hedberg`, `isSetNat`, `isSetFin`) is
+complete: items 6 to 9 are done, UNSTAGED until the USER commit (one commit
+for S5b, R11 (a)). The rulings R1 to R12 are all (a); R4 (a) is the
+agda/cubical `Stable≡→isSet` route.
+
+Item 6 (domain, session 8): `domain/domain.lang` adds `Empty := Fin 0`,
+`absurd` (`finCase 0 k`, the ex falso case), `Not A := A -> Empty`, `Dec A
+:= Sum A (Not A)`, `Stable A := Not (Not A) -> A`, `decStable` (a `Dec A`
+gives a `Stable A`, by `either`) and `isPropNot` (`isProp (Not A)`). No
+kernel change.
+
+Item 7 (`decEqFin`, `decEqNat`; session 9): `core.h` adds `OP_DEC_EQ_FIN`
+and `OP_DEC_EQ_NAT`. `check.c` adds `RULE_DEC_EQ` and `rule_dec_eq` (the
+BUILTINS rows `decEqFin`, arity 3, and `decEqNat`, arity 2; the result is
+`OP_SUM`, the type `Dec (Path (Fin n) a b)` or `Dec (Path Nat a b)`).
+`eval.c` adds the `OP_NAMES` and `OP_ARITY` entries, the core builders
+`core_opn`, `core_binder` and `core_var`, `refute_core` and `dec_eq`. At
+literals the value is `inl refl` when they are equal, else `inr` of the
+code line `fun p => transp (fun i => finCase 2 (finEq n a (p @ i)) (Fin 0)
+Unit) i0 unit` (`natEq a (p @ i)` for `Nat`): a real transport, not an
+axiom. The core term is built with the literals in place and evaluated in
+the empty environment, so the result is an ordinary closure that prints
+and checks again. A neutral argument leaves the operation stuck
+(`fin_args3`, `nat_args`). `json.c` adds the `op_json` arms. Tests: the C
+case "decEqFin inr round-trips" (51: the printed `inr` closure checks
+again at `Dec (Path (Fin 3) 0 1)`) and the item 9 example.
+
+Item 8 (`hedberg`, session 10): `domain.lang` adds `hedbergStable`,
+`hedbergMap`, `hedbergConst`, `hedbergSquare`, `hedberg`, `isSetNat` and
+`isSetFin` after `isPropNot` (145 to 171 lines). `hedberg` is one `hcomp`
+with the four faces `~i` (the constant map at `a`), `i` (`hedbergConst`,
+the constancy of `hedbergMap` in its path argument), `~j` and `j`
+(`hedbergSquare` at `p` and at `q`), under `fun (j : I) => fun (i : I) =>`.
+The 4-face `hcomp` at a neutral type checks with no kernel change: Pi and
+Path eta hold in conversion, which is what makes the corner `i = i1, j =
+i0` agree. A closed square reduces: `isSetNat 0 0 refl refl` evals to `fun
+j => fun i => 0`.
+
+Item 9 (session 10 and 11): `examples/dec.lang` (the positive twin of the
+refusal `trunc0-no-set`: `toNat : Trunc0 (Fin 2) -> Nat` is a `fold` with
+`isSetNat` as the `squash0` case; `toNat1`, `toNatAt1`, `dec00`
+(`decEqFin 3 0 0` is `inl refl`), `isRight01` and `isRightNat` (`either`
+selects 1 at the `inr` of `decEqFin 3 0 1` and of `decEqNat 4 5`), `sq`
+and `sqFin` (closed squares from `isSetNat` and `isSetFin`)) and
+`test/json/dec.json` (7 instances; `toNat` is a function). The evals `dec
+toNat1 => 1`, `dec sq => fun j => fun i => 0`, `dec sqFin => fun j => fun
+i => 1`, `dec isRight01 => fun _ => 1`, `dec isRightNat => fun _ => 1` and
+`dec dec00 => fun _ => inl (fun _x0 => 0)` (48). The check refusal
+`fin-one-not-empty.lang` (`finCase 1 k` with no cases, `FIN_CASE`; 61).
+The build refusal `test/emit/dec-json-function.lang` (a bare `Dec` def at
+unequal literals, `JSON_VALUE`; 3). No new C case (the item 7 round trip
+is the kickoff "C case"; 51). The mutants J13 to J17 (the table).
+
+Gate: `make check` is GREEN at examples 20, parse 11, check 61, evals 48,
+json 20, build refusals 3, regressions 6, printer 2, path regressions 51
+(0 failed). The clang `-Wswitch-enum` pass is clean. The dash scan is
+clean.
+
+Docs: `docs/PLAN.md` section 7 says that S5b is done and names its defs.
+PLAN section 3 (the no-irrelevance rule) needs no change: `isSet Nat` is a
+theorem of the kit (`hedberg`), not an irrelevance rule. `docs/host/
+README.md` needs no change: a `Dec` value is a `Sum` (its row), and an
+`inr` that holds a function is `JSON_VALUE` as before. `README.md` does
+not list the examples.
+
+Deviations from the plan (the kickoff section 1.2; the sessions 8 to 11
+of the S5 HANDOFF give the probes):
+
+- A partial builtin application (`decEqFin 3 0`) is not a refusal: the
+  kit eta-expands it (`fun _x0 => decEqFin 3 0 _x0`), as for every
+  builtin. The kit has no implicit arguments.
+- `hedbergConst` calls `isPropNot (Not (Path A a x))`, not `isPropNot
+  (Path A a x)`: the two maps equated are the double negations `fun h =>
+  h p` and `fun h => h q : Not (Not (Path A a x))`.
+- A bare `Dec` def at unequal literals (`inr (fun p => ..)`) cannot be a
+  def of an example that must build: `JSON_VALUE`, the instance holds a
+  function. The first draft of `dec.lang` held `d00`, `d01` and `n45`;
+  they were removed, and the emit refusal `dec-json-function` records
+  the trap. Decisions stay inside Path typed defs.
+- `fin-one-not-empty` is a new refusal (the kickoff row J13 allows one):
+  no program held `finCase 1`. Its message is wrapped by the finAll
+  re-check: `bad: the case 0 of Fin 1 fails: FIN_CASE: finCase 1 needs 1
+  cases, found 0`.
+- An eval of a path def prints the lambda: `dec isRight01 => fun _ => 1`,
+  `dec dec00 => fun _ => inl (fun _x0 => 0)`.
+- J15 and J17 ran as manual mutants in sessions 9 and 10, on the tree of
+  that session; item 9 cites them and does not run them again.
+
+Mutants: J13, J14 and J16 ran by hand at item 9 on the session 11 tree,
+one at a time (`sd -s` at one site, `make -B check`, `sd -s` back; the
+`shasum` before and after is equal: `check.c` 388ddce1, `eval.c`
+64d7fe2b). J15 (session 9) and J17 (session 10) were manual mutants with
+the same discipline (the restored `shasum` 64d7fe2b and a68c9bfb). Each
+kill came from a repo test, not from a compile error.
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| J13 | `rule_fin_case`: the case count is not compared with `n` at `n = 1` (`nv->nat != 1u && nv->nat != (uint64_t)count`; `Fin 1` taken as empty) | `fin-one-not-empty.lang` (want exit 1 and `FIN_CASE`, got exit 0); gate 1 failure |
+| J14 | `dec_eq`: `y` is `x % k` for `decEqFin` (`inl refl` at every pair) | `dec.lang` (`isRight01`: `PATH_END`, the path at i1 is 0, the type needs 1); then the six `dec` evals (the example does not check); gate 9 failures |
+| J15 | `refute_core`: `Fin 0` and `Unit` swapped in the code line (session 9) | C case "decEqFin inr round-trips" (`TYPE_MISMATCH`: replay: expected a term of type Fin 0, found a term of type Unit; path regressions 1 failed) |
+| J16 | `dec_eq`: `x` is `x + 1u` for `decEqNat` (`succ a` compared with `b`) | `dec.lang` (`isRightNat`: `PATH_END`, the path at i1 is 0, the type needs 1); then the six `dec` evals; gate 8 failures |
+| J17 | domain `hedberg`: `p` and `q` swapped in the `i` face (session 10) | each example (19 of 19; the first is `algebra.lang`: `SYSTEM_OVERLAP`, hedberg: the branches for i and ~j must agree where both keys hold); gate 148 failures |
