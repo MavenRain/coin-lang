@@ -28,8 +28,8 @@ family Quot (A : Type 0) (R : A -> A -> Type 0) := quot (quotOf : A)
 
 def lineTotal : (item : Item) -> Nat :=
   fun (item : Item) => natMul (itemPrice item) (itemCount item)
-def isRed : (color : Color) -> Flag :=
-  fun (color : Color) => fold flagYes flagNo flagNo color
+def isRed : (color : Color) -> Fin 2 :=
+  fun (color : Color) => fold 1 0 0 color
 def total : (items : List Item) -> Nat :=
   fun (items : List Item) => fold (fun (item : Item) (acc : Nat) => natAdd (lineTotal item) acc) 0 items
 def redTotal : (items : List Item) -> Nat :=
@@ -124,3 +124,7 @@ def uaArrow : (A : Type 0) -> (B : Type 0) -> (C : Type 0) -> (e : Equiv A B) ->
   fun (A : Type 0) => fun (B : Type 0) => fun (C : Type 0) => fun (e : Equiv A B) => fun (f0 : A -> C) => fun (f1 : B -> C) =>
   fun (h : (a : A) -> Path C (f0 a) (f1 (witness e a))) =>
     fun (i : I) => fun (a : ua A B e @ i) => hcomp C (~i \/ i) (fun (j : I) => [ ~i -> h a @ ~j, i -> f1 a ]) (f1 (unglue a))
+
+-- Fin subtraction (S5a, R3 (a)): a - b mod n as a plus the negation of b.
+def finSub : (n : Nat) -> Fin n -> Fin n -> Fin n :=
+  fun (n : Nat) (a b : Fin n) => finAdd n a (finNeg n b)

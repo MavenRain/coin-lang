@@ -9,10 +9,10 @@
 #define VARIES 0xffu
 
 static const char *const OP_NAMES[] = {
-  [OP_NAT] = "Nat", [OP_FLAG] = "Flag", [OP_UNIT] = "Unit", [OP_PROD] = "Prod",
+  [OP_NAT] = "Nat", [OP_UNIT] = "Unit", [OP_PROD] = "Prod",
   [OP_SUM] = "Sum", [OP_OPTION] = "Option", [OP_LIST] = "List",
-  [OP_FAMILY] = "?", [OP_UNIT_VAL] = "unit", [OP_FLAG_YES] = "flagYes",
-  [OP_FLAG_NO] = "flagNo", [OP_PAIR] = "pair", [OP_INL] = "inl", [OP_INR] = "inr",
+  [OP_FAMILY] = "?", [OP_UNIT_VAL] = "unit",
+  [OP_PAIR] = "pair", [OP_INL] = "inl", [OP_INR] = "inr",
   [OP_NONE] = "none", [OP_SOME] = "some", [OP_NIL] = "nil", [OP_CONS] = "cons",
   [OP_PACK] = "pack", [OP_CTOR] = "?", [OP_FIRST] = "first",
   [OP_SECOND] = "second", [OP_EITHER] = "either", [OP_OPTION_ELIM] = "option",
@@ -20,31 +20,34 @@ static const char *const OP_NAMES[] = {
   [OP_FOLD_LIST] = "fold", [OP_FOLD_FAMILY] = "fold", [OP_UNFOLD] = "unfold",
   [OP_FILTER] = "filter", [OP_WITNESS] = "witness", [OP_PAYLOAD] = "payload",
   [OP_NAT_ADD] = "natAdd", [OP_NAT_SUB] = "natSub",
-  [OP_NAT_MUL] = "natMul", [OP_NAT_EQ] = "natEq", [OP_NAT_LE] = "natLe",
-  [OP_FLAG_IF] = "flagIf", [OP_PROJ] = "?",
+  [OP_NAT_MUL] = "natMul", [OP_SUCC] = "succ", [OP_NAT_EQ] = "natEq",
+  [OP_NAT_LE] = "natLe",
+  [OP_PROJ] = "?",
   [OP_INTERVAL] = "I", [OP_TRANSP] = "transp",
   [OP_SYSTEM] = "system", [OP_HCOMP] = "hcomp", [OP_FIN] = "Fin",
-  [OP_FIN_ADD] = "finAdd", [OP_FIN_NEG] = "finNeg", [OP_FIN_CASE] = "finCase",
+  [OP_FIN_ADD] = "finAdd", [OP_FIN_NEG] = "finNeg", [OP_FIN_MUL] = "finMul",
+  [OP_FIN_VAL] = "finVal", [OP_FIN_EQ] = "finEq", [OP_FIN_CASE] = "finCase",
   [OP_GLUE] = "Glue", [OP_GLUE_ELEM] = "glue", [OP_UNGLUE] = "unglue"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
    family tables. */
 static const unsigned char OP_ARITY[] = {
-  [OP_NAT] = 0, [OP_FLAG] = 0, [OP_UNIT] = 0, [OP_PROD] = 2, [OP_SUM] = 2,
+  [OP_NAT] = 0, [OP_UNIT] = 0, [OP_PROD] = 2, [OP_SUM] = 2,
   [OP_OPTION] = 1, [OP_LIST] = 1, [OP_FAMILY] = VARIES,
-  [OP_UNIT_VAL] = 0, [OP_FLAG_YES] = 0, [OP_FLAG_NO] = 0, [OP_PAIR] = 2,
+  [OP_UNIT_VAL] = 0, [OP_PAIR] = 2,
   [OP_INL] = 1, [OP_INR] = 1, [OP_NONE] = 0, [OP_SOME] = 1, [OP_NIL] = 0,
   [OP_CONS] = 2, [OP_PACK] = 2, [OP_CTOR] = VARIES, [OP_FIRST] = 1,
   [OP_SECOND] = 1, [OP_EITHER] = 3, [OP_OPTION_ELIM] = 3, [OP_PURE] = 1,
   [OP_MAP] = 2, [OP_BIND] = 2, [OP_FOLD_NAT] = 3, [OP_FOLD_LIST] = 3,
   [OP_FOLD_FAMILY] = VARIES, [OP_UNFOLD] = 3, [OP_FILTER] = 2, [OP_WITNESS] = 1,
   [OP_PAYLOAD] = 1,
-  [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2,
-  [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_FLAG_IF] = 3, [OP_PROJ] = 1,
+  [OP_NAT_ADD] = 2, [OP_NAT_SUB] = 2, [OP_NAT_MUL] = 2, [OP_SUCC] = 1,
+  [OP_NAT_EQ] = 2, [OP_NAT_LE] = 2, [OP_PROJ] = 1,
   [OP_INTERVAL] = 0, [OP_TRANSP] = 3,
   [OP_SYSTEM] = VARIES, [OP_HCOMP] = 4, [OP_FIN] = 1, [OP_FIN_ADD] = 3,
-  [OP_FIN_NEG] = 2, [OP_FIN_CASE] = VARIES, [OP_GLUE] = 3, [OP_GLUE_ELEM] = 3,
+  [OP_FIN_NEG] = 2, [OP_FIN_MUL] = 3, [OP_FIN_VAL] = 2, [OP_FIN_EQ] = 3,
+  [OP_FIN_CASE] = VARIES, [OP_GLUE] = 3, [OP_GLUE_ELEM] = 3,
   [OP_UNGLUE] = 4
 };
 
@@ -439,8 +442,14 @@ static const Value *constant(Machine *m, Op op) {
   return make(m, VAL_OP, op, 0, 0, NULL, NULL, NULL);
 }
 
-static const Value *flag(Machine *m, int yes) {
-  return constant(m, yes ? OP_FLAG_YES : OP_FLAG_NO);
+/* A Fin 2 bit: 1 for yes, 0 for no. */
+static const Value *bit(Machine *m, int yes) {
+  return val_nat(m, yes ? 1u : 0u);
+}
+
+/* Is V the Fin 2 value 1? A filter keeps an element whose test gives 1. */
+static int is_one(const Value *v) {
+  return v->kind == VAL_NAT && v->nat == 1u;
 }
 
 const Value *val_arrow(Machine *m, const Value *dom, const Value *cod) {
@@ -1021,7 +1030,7 @@ static const Value *filter_option(Machine *m, const Value *const *a, uint32_t n)
     return NULL;
   if (blocked(m, test, OP_FILTER, CARRIER_OPTION, 0, a, n, &out))
     return out;
-  return val_is(test, OP_FLAG_YES) ? a[1] : constant(m, OP_NONE);
+  return is_one(test) ? a[1] : constant(m, OP_NONE);
 }
 
 static const Value *filter_list(Machine *m, const Value *const *a) {
@@ -1044,7 +1053,7 @@ static const Value *filter_list(Machine *m, const Value *const *a) {
     case SCRUT_VALUE:
       break;
     }
-    if (val_is(test, OP_FLAG_YES) && !buf_push(m, &kept, s.cells[i]->args[0]))
+    if (is_one(test) && !buf_push(m, &kept, s.cells[i]->args[0]))
       return NULL;
   }
   return build_list(m, kept.items, kept.count, list_tail(m, s.tail, OP_FILTER, CARRIER_LIST, a[0]));
@@ -1109,6 +1118,18 @@ static const Value *nat_mul(Machine *m, const Value *const *a, uint32_t n) {
   return y != 0 && x > UINT64_MAX / y ? overflow(m) : val_nat(m, x * y);
 }
 
+/* succ a: a + 1. */
+static const Value *nat_succ(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out;
+  if (a[0]->kind == VAL_TRAP)
+    return a[0];
+  if (blocked(m, a[0], OP_SUCC, 0, 0, a, n, &out))
+    return out;
+  if (a[0]->kind != VAL_NAT)
+    return internal(m, "a Nat operation on a value that is not a Nat");
+  return a[0]->nat == UINT64_MAX ? overflow(m) : val_nat(m, a[0]->nat + 1u);
+}
+
 /* finAdd n a b: (a + b) mod n, with no overflow. A[0] is n. */
 static const Value *fin_add(Machine *m, const Value *const *a, uint32_t n) {
   const Value *out;
@@ -1144,6 +1165,80 @@ static const Value *fin_neg(Machine *m, const Value *const *a, uint32_t n) {
   return val_nat(m, x == 0 ? 0 : k - x);
 }
 
+/* (X + Y) mod K for X, Y < K, with no overflow. */
+static uint64_t add_mod(uint64_t x, uint64_t y, uint64_t k) {
+  return x >= k - y ? x - (k - y) : x + y;
+}
+
+/* (X * Y) mod K for X, Y < K, with no overflow: double and add. */
+static uint64_t mul_mod(uint64_t x, uint64_t y, uint64_t k) {
+  uint64_t r = 0;
+  for (; y != 0u; y >>= 1) {
+    r = (y & 1u) != 0u ? add_mod(r, x, k) : r;
+    x = add_mod(x, x, k);
+  }
+  return r;
+}
+
+/* The arguments n a b of a Fin operation as numbers in *K, *X and *Y, with
+   n not 0. Else *OUT is the trap, the stuck operation or the error. */
+static int fin_args3(Machine *m, Op op, const Value *const *a, uint32_t n, uint64_t *k, uint64_t *x, uint64_t *y, const Value **out) {
+  if (!nat_args(m, op, a, n, k, x, out))
+    return 0;
+  *out = a[2];
+  if (a[2]->kind == VAL_TRAP || blocked(m, a[2], op, 0, 0, a, n, out))
+    return 0;
+  if (a[2]->kind != VAL_NAT) {
+    *out = internal(m, "a Fin operation on a value that is not a number");
+    return 0;
+  }
+  if (*k == 0) {
+    *out = internal(m, "a Fin 0 operation");
+    return 0;
+  }
+  *y = a[2]->nat;
+  return 1;
+}
+
+/* finMul n a b: (a * b) mod n, with no overflow. A[0] is n. */
+static const Value *fin_mul(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out;
+  uint64_t k = 0;
+  uint64_t x = 0;
+  uint64_t y = 0;
+  if (!fin_args3(m, OP_FIN_MUL, a, n, &k, &x, &y, &out))
+    return out;
+  return val_nat(m, mul_mod(x % k, y % k, k));
+}
+
+/* finVal n a: the number a as a Nat. A[0] is n. */
+static const Value *fin_val(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out;
+  uint64_t k = 0;
+  uint64_t x = 0;
+  if (!nat_args(m, OP_FIN_VAL, a, n, &k, &x, &out))
+    return out;
+  if (k == 0)
+    return internal(m, "a Fin 0 operation");
+  return val_nat(m, x % k);
+}
+
+/* natEq and finEq: 1 in Fin 2 when X = Y, else 0. */
+static const Value *eq_bit(Machine *m, uint64_t x, uint64_t y) {
+  return val_nat(m, x == y ? 1u : 0u);
+}
+
+/* finEq n a b: 1 in Fin 2 when a = b, else 0. A[0] is n. */
+static const Value *fin_eq(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *out;
+  uint64_t k = 0;
+  uint64_t x = 0;
+  uint64_t y = 0;
+  if (!fin_args3(m, OP_FIN_EQ, a, n, &k, &x, &y, &out))
+    return out;
+  return eq_bit(m, x % k, y % k);
+}
+
 /* The finAll case term: k, body0, ..., body(n-1). Body j at the literal j;
    a neutral k keeps the full argument list. At a literal, eval_op evals
    only the body of that literal, so a literal seldom gets here. */
@@ -1162,18 +1257,7 @@ static const Value *nat_test(Machine *m, Op op, const Value *const *a, uint32_t 
   uint64_t y = 0;
   if (!nat_args(m, op, a, n, &x, &y, &out))
     return out;
-  return flag(m, op == OP_NAT_EQ ? x == y : x <= y);
-}
-
-static const Value *reduce_flag_if(Machine *m, const Value *const *a, uint32_t n) {
-  const Value *out;
-  if (blocked(m, a[0], OP_FLAG_IF, 0, 0, a, n, &out))
-    return out;
-  if (val_is(a[0], OP_FLAG_YES))
-    return a[1];
-  if (val_is(a[0], OP_FLAG_NO))
-    return a[2];
-  return internal(m, "a flagIf of a value that is not a Flag");
+  return op == OP_NAT_EQ ? eq_bit(m, x, y) : bit(m, x <= y);
 }
 
 static const Value *reduce_proj(Machine *m, uint32_t inst, uint32_t field, const Value *const *a, uint32_t n) {
@@ -1209,7 +1293,7 @@ static int arity_ok(const Machine *m, Op op, uint32_t inst, uint32_t n) {
   if (op == OP_SYSTEM)
     return n % 2u == 0u;
   if (op == OP_FIN_CASE)
-    return n >= 2u;
+    return n >= 1u;
   if (OP_ARITY[op] != VARIES)
     return n == (uint32_t)OP_ARITY[op];
   return n == varied_arity(m, op, inst);
@@ -1589,7 +1673,6 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
   switch (head->op) {
   case OP_NAT:
   case OP_FIN:
-  case OP_FLAG:
   case OP_UNIT:
     return base;
   case OP_PROD:
@@ -1629,8 +1712,6 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
     return transp_glue(m, line, phi, base);
   case OP_INTERVAL:
   case OP_UNIT_VAL:
-  case OP_FLAG_YES:
-  case OP_FLAG_NO:
   case OP_PAIR:
   case OP_INL:
   case OP_INR:
@@ -1657,15 +1738,18 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
   case OP_NAT_ADD:
   case OP_NAT_SUB:
   case OP_NAT_MUL:
+  case OP_SUCC:
   case OP_NAT_EQ:
   case OP_NAT_LE:
-  case OP_FLAG_IF:
   case OP_PROJ:
   case OP_TRANSP:
   case OP_SYSTEM:
   case OP_HCOMP:
   case OP_FIN_ADD:
   case OP_FIN_NEG:
+  case OP_FIN_MUL:
+  case OP_FIN_VAL:
+  case OP_FIN_EQ:
   case OP_FIN_CASE:
   case OP_GLUE_ELEM:
   case OP_UNGLUE:
@@ -2540,7 +2624,6 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   switch (op) {
   case OP_NAT:
   case OP_FIN:
-  case OP_FLAG:
   case OP_UNIT:
   case OP_PROD:
   case OP_SUM:
@@ -2549,8 +2632,6 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
   case OP_INTERVAL:
   case OP_FAMILY:
   case OP_UNIT_VAL:
-  case OP_FLAG_YES:
-  case OP_FLAG_NO:
   case OP_PAIR:
   case OP_INL:
   case OP_INR:
@@ -2598,17 +2679,23 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return nat_sub(m, a, n);
   case OP_NAT_MUL:
     return nat_mul(m, a, n);
+  case OP_SUCC:
+    return nat_succ(m, a, n);
   case OP_FIN_ADD:
     return fin_add(m, a, n);
   case OP_FIN_NEG:
     return fin_neg(m, a, n);
+  case OP_FIN_MUL:
+    return fin_mul(m, a, n);
+  case OP_FIN_VAL:
+    return fin_val(m, a, n);
+  case OP_FIN_EQ:
+    return fin_eq(m, a, n);
   case OP_FIN_CASE:
     return fin_case(m, a, n);
   case OP_NAT_EQ:
   case OP_NAT_LE:
     return nat_test(m, op, a, n);
-  case OP_FLAG_IF:
-    return reduce_flag_if(m, a, n);
   case OP_PROJ:
     return reduce_proj(m, inst, field, a, n);
   case OP_TRANSP:
@@ -2627,6 +2714,7 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
 
 static const Value *eval_op(Machine *m, const Env *env, const Core *c) {
   const Value **args = arena_alloc(m->arena, ((size_t)c->argc + 1u) * sizeof *args);
+  Value *out;
   uint32_t i;
   if (args == NULL)
     return oom(m);
@@ -2638,7 +2726,13 @@ static const Value *eval_op(Machine *m, const Env *env, const Core *c) {
     if (i == 0 && c->op == OP_FIN_CASE && args[0]->kind == VAL_NAT)
       return args[0]->nat < c->argc - 1u ? eval_core(m, env, c->args[args[0]->nat + 1u]) : internal(m, "a Fin case on a value out of range");
   }
-  return reduce_op(m, c->op, c->inst, c->field, args, c->argc);
+  out = (Value *)reduce_op(m, c->op, c->inst, c->field, args, c->argc);
+  if (out != NULL && out->kind == VAL_STUCK && out->op == OP_FIN_CASE && c->a != NULL) {
+    out->dom = eval_core(m, env, c->a);
+    if (out->dom == NULL)
+      return NULL;
+  }
+  return out;
 }
 
 static const Value *eval_pathp(Machine *m, const Env *env, const Core *c) {
@@ -2988,6 +3082,11 @@ static const Core *quote_op(Machine *m, uint32_t level, const Value *v) {
   c->field = v->field;
   c->args = args;
   c->argc = v->argc;
+  if (v->op == OP_FIN_CASE && v->dom != NULL) {
+    c->a = quote_value(m, level, v->dom);
+    if (c->a == NULL)
+      return NULL;
+  }
   return c;
 }
 
@@ -3088,7 +3187,7 @@ static int is_glue(const Value *v) {
 }
 
 static int is_chain(const Value *v) {
-  return v != NULL && (v->kind == VAL_OP || v->kind == VAL_STUCK) && v->argc > 0 && v->op != OP_SYSTEM && v->op != OP_FIN_CASE && !is_glue(v);
+  return v != NULL && (v->kind == VAL_OP || v->kind == VAL_STUCK) && v->argc > 0 && v->op != OP_SYSTEM && !is_glue(v);
 }
 
 /* A printed binder must not capture another variable or a global name. */
@@ -3266,17 +3365,35 @@ static void print_glue(Printer *p, const Value *v, int atom) {
   put(p, atom ? ")" : "");
 }
 
+/* A case in an inference-only position retains its checked result type.
+   A typed identity supplies the annotation using ordinary source syntax. */
+static int is_typed_case(const Value *v) {
+  return v != NULL && v->kind == VAL_STUCK && v->op == OP_FIN_CASE && v->dom != NULL;
+}
+
+static void print_typed_case(Printer *p, const Value *v) {
+  char name[32];
+  Value raw = *v;
+  uint32_t suffix = 0;
+  do {
+    snprintf(name, sizeof name, "_case%u", suffix++);
+  } while (name_used(p, name));
+  put(p, "((fun (");
+  put(p, name);
+  put(p, " : ");
+  print_value(p, v->dom, 0);
+  put(p, ") => ");
+  put(p, name);
+  put(p, ") ");
+  raw.dom = NULL;
+  print_value(p, &raw, 1);
+  put(p, ")");
+}
+
 static void print_other(Printer *p, const Value *v, int atom) {
   char num[32];
   if (v == NULL) {
     put(p, "?");
-    return;
-  }
-  /* Internal finite cases have no surface form. Do not report printable
-     source syntax when replay would resolve an unknown or unrelated name. */
-  if ((v->kind == VAL_OP || v->kind == VAL_STUCK) && v->op == OP_FIN_CASE) {
-    put(p, "?");
-    p->full = 1;
     return;
   }
   if (v->kind == VAL_OP && v->op == OP_SYSTEM) {
@@ -3354,6 +3471,7 @@ static void print_other(Printer *p, const Value *v, int atom) {
 /* An operation prints as its name and its arguments. The last argument is
    printed in the loop, so a long list does not nest. */
 static void print_value(Printer *p, const Value *v, int atom) {
+  char num[32];
   uint32_t open = 0;
   uint32_t i;
   if (p->depth >= PRINT_DEPTH_MAX) {
@@ -3362,12 +3480,18 @@ static void print_value(Printer *p, const Value *v, int atom) {
     return;
   }
   p->depth++;
-  while (is_chain(v) && !p->full) {
+  while (is_chain(v) && !p->full && !(atom && is_typed_case(v))) {
     if (atom) {
       put(p, "(");
       open++;
     }
     put(p, op_name(p->m, v->op, v->inst, v->field));
+    /* A finite case prints as finCase n k c0 .. c(n-1) (S5a): the core has
+       no n, so print the case count. */
+    if (v->op == OP_FIN_CASE) {
+      snprintf(num, sizeof num, " %lu", (unsigned long)(v->argc - 1u));
+      put(p, num);
+    }
     /* A fold over a family does not print its result type RES (the
        argument before the scrutinee): the source form has no RES. */
     for (i = 0; i + 1u < v->argc; i++) {
@@ -3380,7 +3504,10 @@ static void print_value(Printer *p, const Value *v, int atom) {
     v = v->args[v->argc - 1u];
     atom = 1;
   }
-  print_other(p, v, atom);
+  if (atom && is_typed_case(v))
+    print_typed_case(p, v);
+  else
+    print_other(p, v, atom);
   for (i = 0; i < open; i++)
     put(p, ")");
   p->depth--;

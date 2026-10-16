@@ -159,25 +159,6 @@ static int roundtrip(const char *label, const char *source) {
   return domain_roundtrip(label, "", source);
 }
 
-static int print_refused(const char *label, const char *source) {
-  Arena arena;
-  Machine m;
-  Diag diag;
-  char value[8192];
-  int ok;
-  arena_init(&arena, (size_t)128 << 20);
-  ok = checked(&arena, &m, &diag, source);
-  if (ok)
-    ok = !value_print(&m, NULL, 0, def_value(&m, m.def_count - 1u), value, sizeof value)
-      && !diag.set;
-  if (!ok) {
-    fprintf(stderr, "FAIL %s: an internal finite case has no surface syntax\n", label);
-    if (diag.set) diag_print(&diag, stderr);
-  }
-  arena_release(&arena);
-  return ok;
-}
-
 static int domain_json_contains(const char *label, const char *domain, const char *source, const char *expected) {
   Arena arena;
   Machine m;
@@ -256,11 +237,26 @@ int main(void) {
     "def original : (p : Path Nat 0 1) -> PathP (fun (j : I) => Path Nat (p @ j) (p @ j)) refl refl := fun p => fun (j : I) => hcomp (Path Nat (p @ j) (p @ j)) (~j \\/ j) (fun (i : I) => [ ~j \\/ j -> refl ]) refl\n");
   failed += !roundtrip("stuck Fin addition",
     "def original : (r : Fin 11) -> Fin 11 := fun (r : Fin 11) => finAdd 11 r 3\n");
-  failed += !print_refused("finite case function printing",
+  /* S5a item 2: a finAll def prints as finCase and round-trips. */
+  failed += !roundtrip("finite case function printing",
     "def original : (k : Fin 2) -> Path (Fin 2) (finAdd 2 k 0) k := fun k => refl\n");
-  failed += !print_refused("finite case path printing",
+  failed += !roundtrip("finite case path printing",
     "def p : (k : Fin 2) -> Path (Fin 2) (finAdd 2 k 0) k := fun k => refl\n"
     "def original : Path (Fin 2 -> Fin 2) (fun k => finAdd 2 k 0) (fun k => k) := funExt p\n");
+  failed += !roundtrip("finite case beyond the ordinary spine limit",
+    "def original : (k : Fin 63) -> Path (Fin 63) (finAdd 63 k 0) k := fun k => refl\n");
+  failed += !roundtrip("finite function case in an application",
+    "def choose : Fin 2 -> Nat -> Nat := fun k => finCase 2 k (fun n => natAdd n 1) (fun n => natAdd n 2)\n"
+    "def original : Fin 2 -> Nat -> Nat := fun k n => choose k n\n");
+  failed += !accepts("finite case refines dependent local types",
+    "def f : (k : Fin 2) -> (x : finCase 2 k Nat (Fin 3)) -> Nat := fun k x => finCase 2 k x (finVal 3 x)\n"
+    "def zero : Path Nat (f 0 7) 7 := refl\n"
+    "def one : Path Nat (f 1 2) 2 := refl\n");
+  /* S5a item 5: a finCase at a closed scrutinee checks at the top level
+     (the empty env is not an allocation failure). */
+  failed += !accepts("finite case at a closed literal scrutinee",
+    "def a : Path Nat (finCase 2 1 0 1) 1 := refl\n"
+    "def b : Nat := finCase 2 (natLe 2 3) 0 1\n");
   failed += !roundtrip("Glue type at a neutral face",
     "def original : (A : Type 0) -> (e : Equiv A A) -> (f : Equiv A A) -> Path (Type 0) A A := fun A e f => fun (i : I) => Glue A (~i \\/ i) (fun (_ : I) => [ ~i -> pack A e, i -> pack A f ])\n");
   failed += !roundtrip("stuck unglue",

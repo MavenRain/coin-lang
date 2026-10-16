@@ -1,1 +1,1 @@
-def wrong : Flag := 3
+def wrong : Nat := unit

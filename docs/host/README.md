@@ -62,8 +62,7 @@ starts again for each instance.
 | Type | JSON value |
 |---|---|
 | `Nat` | A number: the full unsigned 64-bit value in decimal |
-| `Fin n` | A number below `n`, in decimal |
-| `Flag` | `true` or `false` |
+| `Fin n` | A number below `n`, in decimal. `Fin 2` is the result of `natLe`, `natEq` and `finEq` (S5a) |
 | `Unit` | `{}` |
 | `Prod A B` | `{"first": a, "second": b}` |
 | `Sum A B` | `{"inl": a}` or `{"inr": b}` |
@@ -90,7 +89,7 @@ example `Lot 3`), not in `value`.
 |---|---|
 | `JSON_VALUE` | An instance holds a function, a type or a stuck term |
 | `JSON_DEPTH` | An instance nests deeper than 2000 levels. A list spine does not count. |
-| `JSON_TYPE` | An instance type, path or point exceeds the printer limits or contains an internal finite case with no source syntax |
+| `JSON_TYPE` | An instance type, path or point exceeds the printer limits or has no supported source representation |
 | `EVAL_OVERFLOW` | A Nat operation in an instance overflows |
 
 The check and evaluation codes are the same as in `langc check` and
@@ -98,10 +97,13 @@ The check and evaluation codes are the same as in `langc check` and
 for each refusal.
 
 `langc eval` also refuses an incomplete normal form with `EVAL_PRINT`
-(a 65536-byte buffer and the same printer depth limit). A stuck finAll case
-has no source syntax, so `eval` refuses it with `EVAL_PRINT` and `build`
-refuses it with `JSON_TYPE`. A closed case that computes to a literal
-prints normally.
+(a 65536-byte buffer and the same printer depth limit). A stuck finite case
+prints as `finCase n k c0 .. c(n-1)` (S5a, R12), so `eval` prints it and
+`build` emits it (`test/json/fin.json`, `law2`). A closed case that
+computes to a literal prints as the literal. In an argument position, a
+typed identity preserves the case result type so printed path and function
+cases can be checked again. The 64-argument application limit does not
+apply to `finCase`, whose arguments include its entire case table.
 
 ## Glue
 
@@ -191,7 +193,8 @@ program def of an `Equiv` type is refused by `langc build`
 type. A program def whose type holds a Glue type, for example a path
 over `loopRot1 @ j` or over `ua A B e @ i`, is refused by `langc build`
 too (`JSON_TYPE`: the type has no source syntax). Write it under a Pi
-type: a `Fin n` binder lets finAll check each closed case.
+type: a `Fin n` binder lets the checker's finAll fallback check each closed
+case.
 
 ## Limits
 
@@ -206,7 +209,7 @@ type: a `Fin n` binder lets finAll check each closed case.
 | JSON nesting | 2000 | `src/json.h:15` |
 | `type` text | 4096 bytes | `src/json.c:7` |
 | Type and normal-form printer depth | 200 | `src/front/eval.c` |
-| finAll cases (`Fin n`, a literal `n`) | `n` below 2^32 - 1; the arena stops a large `n` first | `src/front/check.c` (`fin_cases`) |
+| finAll cases (`Fin n`, a literal `n`; a `finCase n` takes its `n` cases as arguments) | `n` below 2^32 - 1; the arena stops a large `n` first | `src/front/check.c` (`fin_cases`) |
 
 ## Origin
 

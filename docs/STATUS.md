@@ -834,3 +834,257 @@ its printed normal form is checked again. The second also fails if its
 surrounding interval is reused as the fresh path binder (`INTERNAL`).
 `make check`, including the clang pass, is green; path regressions are now
 46 with 0 failures. No CI or test gate was weakened.
+
+## S5a
+
+S5a (the `Fin` and `Nat` span: `finCase`, `finVal`, `finMul`, `succ`,
+`finEq`, `natEq` and `natLe` into `Fin 2`, the removal of `Flag`) is
+complete: items 1 to 5 are done, UNSTAGED until the USER commit (one commit
+for S5a, R11 (a)). Item 1: the S4c mutants that did not run were run on the
+clean tree 25c14e0, before an S5a code change. The rows J1 to J3 close the
+S4c "Not run" line (the item 13 self-review mutants and the candidate
+mutant `field_transport_boundary` gives 1). The row J4 is the mutant of the
+S4c review fix (`fold_image`), which had no row.
+
+Item 2 (`finCase`, R12): `finCase n k c0 .. c(n-1)` is the surface form of
+`OP_FIN_CASE` for a literal `n`. `check.c` adds `RULE_FIN_CASE` (the
+BUILTINS row `finCase`, arity 2), `env_with` (an `Env` copy with one entry
+set), `fin_case_arm` (when `k` is a local, the hint is quoted and each case
+`ci` is checked in an env with `k` bound to the literal `i`; with no hint,
+case 0 is inferred and its type is the hint of the later cases) and
+`rule_fin_case` (`n` must be a literal, else `FIN_CASE`; the case count
+must be `n`, else `FIN_CASE`; the cases take the whole rest of the spine,
+so `finCase 2 k 7 2 3` is `FIN_CASE`; `finCase 0 k` with no hint is
+`TYPE_INFER`). `eval.c`: `arity_ok` takes `OP_FIN_CASE` at `n >= 1` (the
+ex falso core has `k` only), `is_chain` no longer excludes `OP_FIN_CASE`,
+and `print_value` puts the case count after `finCase`; the `print_other`
+block that printed `?` is removed, so a stuck finite case prints. No new
+Op. A Pi codomain is inferred (infer mode), because the type of `depCase`
+needs `finCase` with no hint. Tests: `examples/fin.lang` (`parity2`,
+`depCase`, `p`, `law`, `p2`, `law2`) and `test/json/fin.json` (the
+instances `law`, a `refl` at the `finCase` normal form, and `law2`, `fun i
+=> fun k => (finCase 2 k (fun _ => 0) (fun _ => 1)) @ i`; the functions
+are not instances). The emit refusals `fin-case-type` and `fin-case-term`
+no longer refuse: they are removed with their expect lines. The check
+refusals `fin-case-arity.lang` and `fin-case-branch.lang` give `FIN_CASE`.
+
+Item 3 (`finVal`, `finMul`, `succ`, `finEq`, `natEq`; R1, R2): `core.h`
+adds `OP_SUCC`, `OP_FIN_MUL`, `OP_FIN_VAL` and `OP_FIN_EQ`. `eval.c` adds
+their `OP_NAMES`, `OP_ARITY`, `transp_data` and `reduce_op` arms,
+`nat_succ` (`UINT64_MAX` gives overflow), `add_mod` and `mul_mod` (double
+and add, no overflow), `fin_args3` (`n`, `a` and `b` as numbers, `n` not
+0), `fin_mul`, `fin_val`, `eq_bit` and `fin_eq`; `nat_test` gives `eq_bit`
+for `natEq`. `json.c` adds the `op_json` arms. `check.c` adds no Rule: the
+BUILTINS rows `finMul`, `finVal` and `finEq` (`RULE_FIN_OP`) and `succ`
+(`RULE_NAT2`, arity 1); the `natEq` result is `OP_FIN` with part 2. The
+`Builtin` `part` field also gives the `N` of a `Fin N` result for `NAT2`
+and `FIN_OP` (0: the argument `n`), by the new `op_result`. `finSub`
+(`finAdd n a (finNeg n b)`) is a domain def, checked first as a program
+def. Tests: `fin.lang` adds `valAt`, `mulAt`, `subAt`, `eqAt`, `neqAt` and
+`succAt`; `fin.json` was rebuilt and read (`refl` at 3, 10, 8, 1, 0 and
+5). The name scan found one use of `natEq`, the `monad.lang` filter
+predicate `kept` (see the deviations).
+
+Item 4 (the R5 removal): `Flag`, `flagYes`, `flagNo` and `flagIf` are
+removed from the kernel (`core.h` `OP_FLAG`, `OP_FLAG_YES`, `OP_FLAG_NO`
+and `OP_FLAG_IF`; the `eval.c` `OP_NAMES`, `OP_ARITY`, `transp_data` and
+`reduce_op` arms and `reduce_flag_if`; the `json.c` arms; the `check.c`
+`RULE_FLAG_IF`, `rule_flag_if` and the four BUILTINS rows). `natLe` gives
+`Fin 2` (`bit`: `val_nat(m, yes ? 1u : 0u)`), as `natEq` does. `filter`
+takes `A -> Fin 2` and keeps the elements at 1 (`is_one` at
+`filter_option` and `filter_list`; `flag_type` is `fin2_type`, used by
+`rule_filter` only). `natSub` stays (see the deviations). The entries
+(`check.h` `Entry`): `param_flag` and `result_flag` are gone;
+`param_bound[i]` is 0 for `Nat` and `n` for `Fin n` at a literal `n` that
+is not 0; `entry_arg` reads a `Fin` argument as a decimal below `n`, else
+`EVAL_ARGS`; a `Fin` result prints as its number. JSON: a `Fin 2` value is
+a number (the `Fin n` row), and the `Flag` row of `docs/host/README.md` is
+removed. The domain `isRed` gives `Fin 2` (`fold 1 0 0 color`); `redTotal`
+is unchanged. Each changed test is listed below (the R5 record).
+
+Item 5: (5a) `finCase 2 s b0 b1` with a closed scrutinee at the top level
+gave `OOM` in check and eval (an item 2 defect, found at item 4). The cause
+was not a loop and not in `eval.c`: in `fin_case_arm`, when the scrutinee
+is not a local (`key == NULL`), `c->env` stayed `saved`, and the test
+`c->env == NULL` read the empty top-level env as an allocation failure.
+The fix: `bound` is `saved` with no key, else the `env_with` result, and a
+NULL `bound` is a failure only when `key != NULL`. Regressions:
+`examples/laws.lang` `caseLit : Path Nat (finCase 2 1 0 1) 1 := refl`
+(`laws.json` regenerated; the new last instance) and the C case "finite
+case at a closed literal scrutinee" (47). (5b) The evals `fin valAt => fun
+_ => 3`, `fin mulAt => fun _ => 10` and `fin parity2 3 => 1` (42); the
+check refusal `flag-gone.lang` (`def b : Flag := flagYes`, `NAME_UNKNOWN`;
+60). (5c) The mutants J5 to J12 (the paragraph before the table). (5d)
+This section, the docs rows and the stage.
+
+Gate: `make check` is GREEN at examples 19, parse 11, check 60, evals 42,
+json 19, build refusals 2, regressions 6, printer 2, path regressions 47
+(0 failed). The clang `-Wswitch-enum` pass is clean. The dash scan is
+clean.
+
+Docs (item 5d): `docs/PLAN.md` section 5 (the `Fin n` row, the `finAll`
+sentence and the `Flag` line) and the section 7 S5 line say `finCase`,
+`Fin 2` for `natLe` and `natEq`, and that `natSub` stays. PLAN section 3
+(the no-irrelevance rule) needs no S5a change: its sentences concern proof
+irrelevance, which S5b (Hedberg) touches. `docs/host/README.md`: the `Fin
+n` row names the `Fin 2` results, the stuck-case sentence says that a
+stuck finite case prints as `finCase`, and the `Fin n` binder note and the
+limits row name the finAll fallback; the `Flag` row was removed at item 4
+(`rg -w Flag` finds no hit). `formers/FORMERS.md` names `Flag` at line 31
+(mech) and in the F1 and F2 `hosts/tcc-evm-anchor` columns: these describe
+other hosts, not coin-lang, so they stay. The kickoff item 4 row now says
+that `natSub` stays.
+
+Deviations from the plan (kickoff section 2; the kickoff text gives the
+rulings):
+
+- J1 is killed by each example, but the first domain failure is the
+  family `Trunc1`, not `Trunc0` or `Quot`: the `squash1` field types use
+  the earlier fields, and the domain loads `Trunc1` first.
+- J2 is also killed by `inventory.lang`, with no refusal code on the first
+  stderr line (`langc: (null): : `). The cause is not known.
+- J3 is not killed by the planned C case "transport of squash0 is not the
+  field rebuild" (it passes under J3). The C cases "transport of squash0
+  along a parameter line stays stuck" and "transport preserves a
+  parameter-dependent HIT boundary" kill it.
+- `fin-case-branch` (session 2) gives `FIN_CASE`, not `TYPE_MISMATCH`: the
+  `check_lam` finAll fallback checks the body again at each literal and
+  wraps the inner code ("the case 1 of Fin 2 fails: TYPE_MISMATCH: expected
+  a term of type Fin 3, found a term of type Nat"). Each value-level
+  refusal under a `Fin n` lambda with a literal `n` gets the wrap.
+- The C cases "finite case function printing" (session 2: `print_refused`
+  to a round trip) and "finite case path printing" (`print_refused` to the
+  new `prints` helper, not a round trip: the printed `(finCase 2 k (fun _
+  => 0) (fun _ => 1)) @ i` re-checks to `FIN_CASE` or `TYPE_INFER`, because
+  `fun _ => ...` needs a binder type). `print_refused` is removed. The
+  count stayed 46 at item 2.
+- Infer mode (session 2, not in the kickoff): a Pi codomain is inferred,
+  because the type of `depCase` needs `finCase` with no hint.
+- `natEq` (session 3) had one use, the `monad.lang` filter predicate
+  `kept`: at item 3 it became `finCase 2 (natEq n 4) flagNo flagYes`
+  (`filter` still took `A -> Flag`), and item 4 put it back to `natEq n 4`.
+  `natLe` stayed `Flag` until item 4.
+- An eval of a path def (session 3) prints the path lambda: `fin valAt`
+  gives `fun _ => 3`, not the kickoff `3`.
+- `natSub` stays (session 4). The kickoff item 4 row lists it among the
+  removals; the session 4 prompt keeps it (`entries` `discount`, `laws`
+  `subFloor`) and moves only `natLe` to `Fin 2`. The kickoff row and the
+  PLAN rows say so now.
+- `laws.lang` `flagTrue` (session 4) is `leTrue : Path (Fin 2) (natLe 2 3)
+  1 := refl`, not the map form `finCase 2 (natLe 2 3) 0 1` in a type: that
+  form gave `OOM` at item 4 (the item 5a defect).
+- The OOM cause (session 5) is a `check.c` env test in `fin_case_arm`, not
+  the `eval.c` literal shortcut that the session 4 record guessed.
+- C case 47 (session 5) is the closed-scrutinee `accepts` case, not the
+  kickoff "finAll def round-trips": the item 2 round trip "finite case
+  function printing" covers it.
+- The eval lines (session 5) hold the path lambdas `fun _ => 3` and `fun _
+  => 10`, and the name `fin parity2 3`: the kickoff `fin parity3` is the
+  eval of `parity2` at 3 (there is no def `parity3`).
+- J6 (session 6) survived the planned killer `mulAt`: 3 * 7 and 3 + 7 are
+  both 10 in `Fin 11`. The new def `mulAt2` (3 * 4 is 1, 3 + 4 is 7) kills
+  it, and `test/json/fin.json` was regenerated (its only change is the new
+  `mulAt2` instance).
+- J6 and J7 as planned (`add_mod` alone, `bound = saved` alone) stop the
+  clang `-Wextra` pass (an unused `mul_mod`, an unneeded `env_with`). A
+  compile error is not a kill, so the dropped call stays in a comma
+  expression `(old_call, new_value)` and the gate runs.
+- J8: the probe `langc check test/check/fin-case-arity.lang` under the
+  mutant prints `ok`, so the planned refusal is the killer and the finAll
+  wrap gives no second `FIN_CASE` (the S4c H16 trap did not apply, no new
+  refusal def).
+- J9 is killed first by `depCase` (the type cases rotate too), not by
+  `parity2`, which has no law.
+- J10: the printer line `put(p, op_name(...))` is not unique (two sites);
+  the runner anchors on the S5a comment line above the branch.
+- J11 is killed first by the eval `inventory stockRed` and the
+  `inventory.lang` and `monad.lang` JSON builds, not by the entries or monad
+  filter evals.
+
+Each changed test (R5 record):
+- examples/monad.lang: `okRight`, `okBind` : `Sum (Fin 2) Nat`; `okBind`
+  body `inl 0`; `kept` predicate back to `natEq n 4`; `small` text unchanged
+  (natLe now gives Fin 2). Expected: eval `monad okBind => inl 0` (was `inl
+  flagNo`); monad.json types `Sum (Fin 2) Nat` (was `Sum Flag Nat`), okBind
+  value `{"inl":0}` (was `{"inl":false}`); small [1,2] and kept 4 unchanged.
+- examples/formers.lang: `both : Prod Nat (Fin 2) := pair price 1`; `right :
+  Fin 2`. formers.json: both type `Prod Nat (Fin 2)`, second 1 (was true);
+  right type `Fin 2`, value 1 (was true). Eval `formers right => 1` unchanged.
+- examples/entries.lang: comment; `cheap : (a : Nat) -> Fin 2`; `pick : (f :
+  Fin 2) -> (a b : Nat) -> Nat := ... finCase 2 f b a`. Eval lines unchanged
+  (cheap 100 => 1, cheap 101 => 0, pick 1 4 9 => 4, pick 0 4 9 => 9); the gate
+  `eval_refused 2 EVAL_ARGS pick 2 4 9` unchanged (2 is not below 2);
+  entries.json byte equal.
+- examples/laws.lang: `firstPair` uses `pair 3 1` (a Prod Nat Nat now);
+  `flagTrue` is `leTrue : Path (Fin 2) (natLe 2 3) 1 := refl`. DEVIATION from
+  the map: `finCase 2 (natLe 2 3) 0 1` in a type gives OOM (traps). laws.json:
+  name leTrue, type `PathP (fun _ => Fin 2) 1 1` (was `... Nat) 1 1`), value
+  `{"refl":1}` unchanged.
+- examples/equiv.lang:17: comment only.
+- test/check: mismatch.lang `def wrong : Nat := unit` (TYPE_MISMATCH, probed);
+  reserved.lang `:= Fin 2` (REFUSE_NAME); bind-carrier.lang and
+  filter-sum.lang `Sum (Fin 2) Nat` (TYPE_MISMATCH). expect.txt unchanged.
+- test/regressions.js:74-78: `Sum (Fin 2)` x4, `inl 0` x2, `{inl: 0}`.
+- domain/domain.lang: `isRed : (color : Color) -> Fin 2 := ... fold 1 0 0
+  color`; `redTotal` text unchanged (filter at Fin 2); probe `redTotal nil` 0.
+- docs/host/README.md: the `Flag` row removed. docs/PLAN.md, docs/STATUS.md
+  and formers/FORMERS.md still say Flag: item 5 docs (done at item 5d).
+
+Mutants: one at a time, `make -B` for each build, by the runners in
+`lang-template-work/coin-lang-S5a-mut/` (`lib.sh`, a copy of the S4c one:
+a site assert, an awk edit, the gate, the C cases, restore). Each file was
+restored and its `shasum` was confirmed (15 files, all OK). Each kill came
+from a test, not from a compile error.
+
+Item 5c (session 6): the mutants J5 to J12 ran on the session 5 tree with
+the same runners (`j5.sh` to `j12.sh`; `src-s5a.sha` regenerated, 8 source
+files). Each was killed by a repo test, and each file was restored and its
+`shasum` confirmed. The J8 probe shows that the `fin-case-arity` refusal
+comes from the mutated site. The planned J6 killer did not kill (see the
+deviations): `examples/fin.lang` holds the new def `mulAt2`.
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| J1 | `check_ctor`: the earlier point fields are not pushed, and `check_field` gets no earlier field (S4c item 13) | each example (18 of 18; the first is `algebra.lang`: the domain family `Trunc1` gives `TYPE_MISMATCH`), 45 of 46 C cases |
+| J2 | `ctor_app`: each field is checked at the parameters only, not at the earlier field values (S4c item 13) | `quot.lang` (`map0`: `INTERNAL`, a variable outside its scope), `trunc.lang` (`sq1`: `INTERNAL`), `inventory.lang` (no code), `inventory stockTotal`, `inventory stockRed`, 8 C cases |
+| J3 | `field_transport_boundary` gives 1 | C cases "transport of squash0 along a parameter line stays stuck" and "transport preserves a parameter-dependent HIT boundary" |
+| J4 | `fold_image`: a path field of a boundary image passes unchanged (the S4c review fix) | C case "fold boundary maps a point constructor path field" |
+| J5 | `fin_val` gives `x % k + 1u` (k + 1) | `fin.lang` (`valAt`: `PATH_END`, the path at i1 is 4, the type needs 3); then the evals `fin valAt`, `fin mulAt`, `fin parity2` (the example does not check) |
+| J6 | `fin_mul` returns `add_mod`, the `mul_mod` call kept in a comma expression | run 2 SURVIVED (`mulAt`: 3 * 7 and 3 + 7 are both 10 in `Fin 11`). Run 3, with the new def `mulAt2 : Path (Fin 11) (finMul 11 3 4) 1 := refl`: `fin.lang` (`mulAt2`: `PATH_END`, the path at i1 is 7, the type needs 1) |
+| J7 | `fin_case_arm`: `bound` is `saved` when `key != NULL` (the case is checked at the hint with k neutral; the `env_with` call kept in a comma expression) | `fin.lang` (`depCase`: `FIN_CASE`, the case 1 of Fin 2 fails: `FIN_RANGE`, the literal 7 is not below 3), C case "finite case function printing" |
+| J8 | `rule_fin_case`: `if (0)` for `nv->nat != (uint64_t)count` (the case count is not compared with n) | `fin-case-arity.lang` (want exit 1 and `FIN_CASE`, got exit 0). Probe under the mutant: `langc check` of the file prints `ok`, exit 0; `fin-case-branch.lang` still `FIN_CASE` |
+| J9 | `fin_case` and the `eval_op` literal shortcut pick the case `(k + 1) mod n` | `fin.lang` (`depCase`: `FIN_CASE`, the case 0 of Fin 2 fails: `FIN_RANGE`, the literal 7 is not below 3), `laws.lang` (`caseLit`: `PATH_END`, 0 for 1), `fin-case-branch.lang` (got exit 0), evals `entries pick` (9 for 4, 4 for 9), C case "finite case at a closed literal scrutinee" |
+| J10 | printer: the `OP_FIN_CASE` branch is `if (0)` (no case count after the op name) | JSON build `fin.lang` (the output differs from `test/json/fin.json`), C cases "finite case function printing" and "finite case path printing" |
+| J11 | `is_one` tests `v->nat == 0u` (`filter` keeps the elements at 0) | eval `inventory stockRed` (40 for 30), JSON builds `inventory.lang` and `monad.lang` (the output differs) |
+| J12 | `eq_bit` gives `1u` (natEq and finEq, one site) | `fin.lang` (`neqAt`: `PATH_END`, the path at i1 is 1, the type needs 0); then the evals `fin valAt`, `fin mulAt`, `fin parity2` |
+
+### S5a staged review (2026-10-15)
+
+Three medium findings were reproduced and fixed:
+
+- A dependent local kept its original type while a `finCase` branch bound
+  the scrutinee to a literal. The valid function taking
+  `x : finCase 2 k Nat (Fin 3)` and returning `finCase 2 k x (finVal 3 x)`
+  failed with `TYPE_MISMATCH`. Each branch now refreshes the types of
+  locals introduced after the scrutinee, then restores the original scope.
+- A printed case used as a path or function head lost the type required to
+  check its bare lambda branches. The printed `law2` failed replay with
+  `TYPE_INFER`. Finite cases now retain their result type through evaluation
+  and quotation. In argument positions the printer supplies it with a
+  typed identity, preserving the original path endpoints. This supersedes
+  the earlier print-only path regression and its recorded limitation.
+- A `Fin 63` finAll normal form printed 65 arguments and failed replay at
+  the ordinary 64-argument spine limit. The limit now exempts the builtin
+  `finCase`, whose case table uses the whole spine.
+
+The path printing check is now a full replay and conversion check. Three
+additional C regressions cover dependent locals, the large case table and
+application of a finite function case, for 50 C cases in total. The JSON
+fixture changes only the annotated `law2` term. The source metadata is for
+printing and does not change conversion or identify proofs.
+
+Validation: `make check` passes (examples 19, parse refusals 11, check
+refusals 60, evals 42, JSON builds 19, build refusals 2, regressions 6,
+printer regressions 2, C cases 50). The clang warning pass and the C suite
+under AddressSanitizer and UndefinedBehaviorSanitizer pass. No CI or test
+gate was weakened. There are no remaining blockers from this review.

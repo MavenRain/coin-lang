@@ -71,11 +71,11 @@ function test(name, fn) {
 
 try {
   test('Sum bind preserves its error type', () => {
-    refused('def s : Sum Flag Nat := inl flagNo\ndef bad : Sum Nat Nat := bind s (fun (n : Nat) => inr n)', 'TYPE_MISMATCH');
+    refused('def s : Sum (Fin 2) Nat := inl 0\ndef bad : Sum Nat Nat := bind s (fun (n : Nat) => inr n)', 'TYPE_MISMATCH');
     refused('def s : Sum (Path Nat 0 0) Nat := inl refl\ndef bad : Sum (Path Nat 0 1) Nat := bind s (fun (n : Nat) => inr n)', 'TYPE_MISMATCH');
     refused('def s : Sum (Type 1) Nat := inl (Type 0)\ndef bad : Sum (Type 0) Nat := bind s (fun (n : Nat) => inr n)', 'TYPE_MISMATCH');
-    const doc = built('def s : Sum Flag Nat := inl flagNo\ndef keep : Sum Flag Unit := bind s (fun (n : Nat) => inr unit)\ndef success : Sum Flag Nat := bind (inr 3) (fun (n : Nat) => inr (natAdd n 1))');
-    assert.deepEqual(doc.instances[1].value, {inl: false});
+    const doc = built('def s : Sum (Fin 2) Nat := inl 0\ndef keep : Sum (Fin 2) Unit := bind s (fun (n : Nat) => inr unit)\ndef success : Sum (Fin 2) Nat := bind (inr 3) (fun (n : Nat) => inr (natAdd n 1))');
+    assert.deepEqual(doc.instances[1].value, {inl: 0});
     assert.deepEqual(doc.instances[2].value, {inr: 4});
   });
 

@@ -163,23 +163,27 @@ These are the only base types and base operations:
 | Base | Operations | Why the design needs it |
 |---|---|---|
 | `Nat` | literals, `succ`, `natAdd`, `natMul`, decidable equality with evidence | the size of a coin space, fiber counts, the index of `Fin` |
-| `Fin n` | literals `k` for `k < n`, `finAdd`, `finNeg`, `finMul` (the ring `Z_n`), `finVal : Fin n -> Nat`, decidable equality with evidence, `finAll` | `Z_q`, `Z_p`, the challenge bit, the vertices of a graph, the base of `FinSet` |
+| `Fin n` | literals `k` for `k < n`, `finAdd`, `finNeg`, `finMul` (the ring `Z_n`), `finVal : Fin n -> Nat`, `finEq`, decidable equality with evidence, `finCase` (the surface eliminator, R12; `finAll` is the checker's fallback for a lambda on `Fin n`) | `Z_q`, `Z_p`, the challenge bit, the vertices of a graph, the base of `FinSet` |
 | `U` | universes (`FinSet` is in `U1`) | `FinSet` is a Sigma over `U` |
 
-- `finAll` is the eliminator of `Fin n` for a literal `n`. The checker
-  checks `\(k : Fin n) -> t` against `(k : Fin n) -> P k` when
-  `t[j/k] : P j` for each `j < n`. It is the case analysis of `Fin n` with
-  n cases. The pointwise paths of a coupling use it: after evaluation of
-  the closed modular arithmetic, each case is `refl`.
+- `finCase n k c0 .. c(n-1)` is the eliminator of `Fin n` for a literal
+  `n` (S5a, R12): the case count must be `n`, and the case `ci` is checked
+  with `k` bound to `i`. `finAll` is the checker's fallback: it checks
+  `\(k : Fin n) -> t` against `(k : Fin n) -> P k` when `t[j/k] : P j` for
+  each `j < n`. Both are the case analysis of `Fin n` with n cases. The
+  pointwise paths of a coupling use them: after evaluation of the closed
+  modular arithmetic, each case is `refl`.
 - The Schnorr group operations are defs on `Fin 23`: `pow b r` is a fold
   over `finVal r` with `finMul`.
 - Decidable equality gives evidence both ways:
   `Dec (Path A a b) := Sum (Path A a b) (Path A a b -> Empty)`, with
   `Empty := Fin 0`.
-- These kit parts are outside the span. S5 removes them: `Flag` (use
-  `Fin 2`), the kit `Eq` (S1 replaces it) and the Nat operations that the
-  design does not use. Unit, Sum, Option and List stay, because they are
-  formers (products, coproducts and monads), not base types.
+- These kit parts are outside the span. S5a removed `Flag` (`Fin 2`
+  replaces it: `natLe`, `natEq` and `finEq` give `Fin 2`, and `filter`
+  takes `A -> Fin 2`), and S1 replaced the kit `Eq`. `natSub` stays: the
+  examples `discount` and `subFloor` use it. Unit, Sum, Option and List
+  stay, because they are formers (products, coproducts and monads), not
+  base types.
 
 ## 6. JSON
 
@@ -226,10 +230,11 @@ are new or change:
   `transp` with parameters. `Trunc1`, `Trunc0`, set quotients, `S1`. JSON
   rule 4. Refusals: a missing path case, a path case with a wrong boundary,
   and an elimination of `Trunc0` into a type without an `isSet` proof.
-- S5: the base span. `Fin n` and its ring operations, `finVal`, `finAll`,
-  decidable equality with evidence, the removal of `Flag` and of the unused
-  Nat operations. Library: `FinSet`, `El`, the `FinSet` of `Fin n`, of a
-  Sigma, and of `Fin 2 * Fin 24`.
+- S5: the base span. S5a (done): `finCase`, `finVal`, `finMul`, `succ`
+  and `finEq`, `natLe` and `natEq` into `Fin 2`, the removal of `Flag`
+  (`natSub` stays). S5b: decidable equality with evidence. S5c, the
+  library: `FinSet`, `El`, the `FinSet` of `Fin n`, of a Sigma, and of
+  `Fin 2 * Fin 24`.
 - S6: `Rand`, its monad laws as paths, `couple`, `count`, `Bag`, `match`
   and the fiber theorem in both directions. JSON rules 2 and 3 and the
   `Rand` rule.

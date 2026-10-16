@@ -1,0 +1,2 @@
+-- Flag is gone (S5a R5): the name is unknown.
+def b : Flag := flagYes

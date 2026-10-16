@@ -22,7 +22,7 @@ equality backEnd => 1200
 universes Endo => (A : Type 0) -> (x : A) -> A
 algebra down => cons 5 (cons 4 (cons 3 nil))
 algebra stop => nil
-monad okBind => inl flagNo
+monad okBind => inl 0
 functions four => 4
 functions applied => 36
 kan evPi => 5
@@ -37,3 +37,6 @@ circle loopAt0 => 1
 circle loop2At0 => 2
 trunc truncAt => trunc1 (Fin 3) 1
 quot toTrunc3 => trunc0 (Fin 4) 2
+fin valAt => fun _ => 3
+fin mulAt => fun _ => 10
+fin parity2 3 => 1

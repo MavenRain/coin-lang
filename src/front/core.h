@@ -19,7 +19,6 @@
 /* The core names: type formers, constructors and operations. */
 typedef enum {
   OP_NAT,
-  OP_FLAG,
   OP_UNIT,
   OP_PROD,
   OP_SUM,
@@ -27,8 +26,6 @@ typedef enum {
   OP_LIST,
   OP_FAMILY,
   OP_UNIT_VAL,
-  OP_FLAG_YES,
-  OP_FLAG_NO,
   OP_PAIR,
   OP_INL,
   OP_INR,
@@ -55,9 +52,9 @@ typedef enum {
   OP_NAT_ADD,
   OP_NAT_SUB,
   OP_NAT_MUL,
+  OP_SUCC,
   OP_NAT_EQ,
   OP_NAT_LE,
-  OP_FLAG_IF,
   OP_PROJ,
   OP_INTERVAL, /* the sort I: never a type, only the type of an interval term */
   OP_TRANSP,   /* transp L phi a: L a line (a path value in U), phi a face */
@@ -66,6 +63,9 @@ typedef enum {
   OP_FIN,      /* Fin n: the numbers below n; a value is a VAL_NAT literal */
   OP_FIN_ADD,  /* finAdd n a b: (a + b) mod n */
   OP_FIN_NEG,  /* finNeg n a: (n - a) mod n */
+  OP_FIN_MUL,  /* finMul n a b: (a * b) mod n */
+  OP_FIN_VAL,  /* finVal n a: the number a as a Nat */
+  OP_FIN_EQ,   /* finEq n a b: 1 in Fin 2 when a = b, else 0 */
   OP_FIN_CASE, /* finAll case: k, body0, ..., body(n-1); body j at the literal j */
   OP_GLUE,     /* Glue A phi sys: a type; sys as in OP_HCOMP, each branch pack T e */
   OP_GLUE_ELEM, /* glue: phi, sys, a; sys as in OP_HCOMP, each branch t */
@@ -111,7 +111,7 @@ struct Core {
   uint32_t inst;
   uint32_t field; /* OP_PROJ: the field number */
   const char *name;
-  const Core *a;
+  const Core *a; /* OP_FIN_CASE: its result type, for printing in inference mode */
   const Core *b;
   const Core *const *args;
   uint32_t argc;
@@ -205,7 +205,7 @@ struct Value {
   const Value *const *args;
   uint32_t argc;
   const char *name; /* LAM, PI, SIGMA: the binder */
-  const Value *dom; /* PI, SIGMA: the domain. APP, PAPP: the function. */
+  const Value *dom; /* PI, SIGMA: the domain. APP, PAPP: the function. FIN_CASE: result type. */
   const Value *arg; /* APP, PAPP: the argument. A PI with no body: the codomain. */
   const Env *env;   /* LAM, PI, SIGMA, PLAM, PATHP: the closure */
   const Core *body;

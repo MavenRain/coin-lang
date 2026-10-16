@@ -77,9 +77,9 @@ typedef enum {
   RULE_TRANSP,
   RULE_HCOMP,
   RULE_NAT2,
-  RULE_FLAG_IF,
   RULE_FIN,
   RULE_FIN_OP,
+  RULE_FIN_CASE,
   RULE_GLUE,
   RULE_GLUE_ELEM,
   RULE_UNGLUE
@@ -90,13 +90,12 @@ typedef struct {
   uint32_t arity; /* fold: the least number of arguments */
   Rule rule;
   Op op;
-  Op result;     /* VALUE0, NAT2: the result type. EMPTY, INJ: the type former. */
-  uint32_t part; /* INJ, PART, SIGMA_PART: 0 or 1 */
+  Op result;     /* VALUE0, NAT2, FIN_OP: the result type. EMPTY, INJ: the type former. */
+  uint32_t part; /* INJ, PART, SIGMA_PART: 0 or 1. NAT2, FIN_OP: N of a Fin N result (0: the argument n) */
 } Builtin;
 
 static const Builtin BUILTINS[] = {
   {"Nat", 0, RULE_TYPE0, OP_NAT, OP_NAT, 0},
-  {"Flag", 0, RULE_TYPE0, OP_FLAG, OP_NAT, 0},
   {"Unit", 0, RULE_TYPE0, OP_UNIT, OP_NAT, 0},
   {"Prod", 2, RULE_TYPE2, OP_PROD, OP_NAT, 0},
   {"Sum", 2, RULE_TYPE2, OP_SUM, OP_NAT, 0},
@@ -105,14 +104,16 @@ static const Builtin BUILTINS[] = {
   {"Fin", 1, RULE_FIN, OP_FIN, OP_NAT, 0},
   {"finAdd", 3, RULE_FIN_OP, OP_FIN_ADD, OP_FIN, 0},
   {"finNeg", 2, RULE_FIN_OP, OP_FIN_NEG, OP_FIN, 0},
+  {"finMul", 3, RULE_FIN_OP, OP_FIN_MUL, OP_FIN, 0},
+  {"finVal", 2, RULE_FIN_OP, OP_FIN_VAL, OP_NAT, 0},
+  {"finEq", 3, RULE_FIN_OP, OP_FIN_EQ, OP_FIN, 2},
+  {"finCase", 2, RULE_FIN_CASE, OP_FIN_CASE, OP_FIN, 0},
   {"I", 0, RULE_INTERVAL, OP_INTERVAL, OP_NAT, 0},
   {"i0", 0, RULE_IEND, OP_INTERVAL, OP_INTERVAL, 0},
   {"i1", 0, RULE_IEND, OP_INTERVAL, OP_INTERVAL, 1},
   {"PathP", 3, RULE_PATHP, OP_INTERVAL, OP_NAT, 0},
   {"Path", 3, RULE_PATH, OP_INTERVAL, OP_NAT, 0},
   {"unit", 0, RULE_VALUE0, OP_UNIT_VAL, OP_UNIT, 0},
-  {"flagYes", 0, RULE_VALUE0, OP_FLAG_YES, OP_FLAG, 0},
-  {"flagNo", 0, RULE_VALUE0, OP_FLAG_NO, OP_FLAG, 0},
   {"pair", 2, RULE_PAIR, OP_PAIR, OP_PROD, 0},
   {"inl", 1, RULE_INJ, OP_INL, OP_SUM, 0},
   {"inr", 1, RULE_INJ, OP_INR, OP_SUM, 1},
@@ -145,9 +146,9 @@ static const Builtin BUILTINS[] = {
   {"natAdd", 2, RULE_NAT2, OP_NAT_ADD, OP_NAT, 0},
   {"natSub", 2, RULE_NAT2, OP_NAT_SUB, OP_NAT, 0},
   {"natMul", 2, RULE_NAT2, OP_NAT_MUL, OP_NAT, 0},
-  {"natEq", 2, RULE_NAT2, OP_NAT_EQ, OP_FLAG, 0},
-  {"natLe", 2, RULE_NAT2, OP_NAT_LE, OP_FLAG, 0},
-  {"flagIf", 3, RULE_FLAG_IF, OP_FLAG_IF, OP_FLAG, 0}
+  {"succ", 1, RULE_NAT2, OP_SUCC, OP_NAT, 0},
+  {"natEq", 2, RULE_NAT2, OP_NAT_EQ, OP_FIN, 2},
+  {"natLe", 2, RULE_NAT2, OP_NAT_LE, OP_FIN, 2}
 };
 
 #define BUILTIN_COUNT ((uint32_t)(sizeof BUILTINS / sizeof BUILTINS[0]))
@@ -315,8 +316,9 @@ static const Value *nat_type(Checker *c) {
   return tyop(c, OP_NAT, 0, NULL, NULL, NULL);
 }
 
-static const Value *flag_type(Checker *c) {
-  return tyop(c, OP_FLAG, 0, NULL, NULL, NULL);
+/* Fin 2: the result type of a filter predicate. */
+static const Value *fin2_type(Checker *c) {
+  return tyop(c, OP_FIN, 1, val_nat(c->m, 2), NULL, NULL);
 }
 
 /* The sort I: the type of an interval term, never a type itself. */
@@ -825,7 +827,7 @@ static const Core *rule_filter(Call *k) {
     return NULL;
   if (!carrier_of(mt, &carrier, &a) || carrier == CARRIER_SUM)
     return nul(FAIL(c, "TYPE_MISMATCH", "filter needs a value of type Option A or List A, found a term of type %s", show(c, mt)));
-  p = check(c, k->args[0], val_arrow(c->m, a, flag_type(c)));
+  p = check(c, k->args[0], val_arrow(c->m, a, fin2_type(c)));
   k->type = mt;
   return op3(c, OP_FILTER, carrier, 2, p, x, NULL);
 }
@@ -1662,12 +1664,21 @@ static const Core *rule_unglue(Call *k) {
   return core_op(c, OP_UNGLUE, 0, 0, args, 4);
 }
 
+/* The result type of a NAT2 or FIN_OP builtin. FIN is Fin n of the
+   argument n (NULL for NAT2). */
+static const Value *op_result(Checker *c, const Builtin *b, const Value *fin) {
+  if (b->result != OP_FIN)
+    return tyop(c, b->result, 0, NULL, NULL, NULL);
+  return b->part == 0u ? fin : tyop(c, OP_FIN, 1, val_nat(c->m, b->part), NULL, NULL);
+}
+
+/* natAdd x y, ..., natEq x y (Fin 2), succ x: each argument : Nat. */
 static const Core *rule_nat2(Call *k) {
   Checker *c = k->c;
   const Core *x = check(c, k->args[0], nat_type(c));
-  const Core *y = x == NULL ? NULL : check(c, k->args[1], nat_type(c));
-  k->type = tyop(c, k->b->result, 0, NULL, NULL, NULL);
-  return op3(c, k->b->op, 0, 2, x, y, NULL);
+  const Core *y = x == NULL || k->b->arity < 2u ? NULL : check(c, k->args[1], nat_type(c));
+  k->type = op_result(c, k->b, NULL);
+  return op3(c, k->b->op, 0, k->b->arity, x, y, NULL);
 }
 
 /* Fin n: n : Nat, Fin n : Type 0. */
@@ -1677,27 +1688,114 @@ static const Core *rule_fin(Call *k) {
   return op3(k->c, OP_FIN, 0, 1, n, NULL, NULL);
 }
 
-/* finAdd n a b, finNeg n a: n : Nat, each other argument : Fin n, the
-   result : Fin n. */
+/* finAdd n a b, finNeg n a, finMul n a b, finVal n a, finEq n a b: n :
+   Nat, each other argument : Fin n. The result is Fin n, Nat (finVal) or
+   Fin 2 (finEq). */
 static const Core *rule_fin_op(Call *k) {
   Checker *c = k->c;
   const Core *n = check(c, k->args[0], nat_type(c));
   const Value *fin = n == NULL ? NULL : tyop(c, OP_FIN, 1, here(c, n), NULL, NULL);
   const Core *x = fin == NULL ? NULL : check(c, k->args[1], fin);
   const Core *y = x == NULL || k->b->arity < 3u ? NULL : check(c, k->args[2], fin);
-  k->type = fin;
+  k->type = op_result(c, k->b, fin);
   return op3(c, k->b->op, 0, k->b->arity, n, x, y);
 }
 
-/* flagIf b yes no */
-static const Core *rule_flag_if(Call *k) {
+/* ENV with the entry at index IX set to V: the entries before IX are
+   copied, the tail is shared. */
+static const Env *env_with(Machine *m, const Env *env, uint32_t ix, const Value *v) {
+  const Env *rest;
+  if (env == NULL)
+    return NULL;
+  if (ix == 0u)
+    return env_push(m, env->next, v);
+  rest = env_with(m, env->next, ix - 1u, v);
+  return rest == NULL ? NULL : env_push(m, rest, env->value);
+}
+
+/* Refresh the types of locals introduced after KEY in the branch env. */
+static const Scope *fin_case_scope(Checker *c, const Scope *scope, const Scope *key) {
+  Scope *out;
+  const Core *type;
+  if (scope == NULL || scope->level <= key->level)
+    return scope;
+  out = arena_alloc(c->m->arena, sizeof *out);
+  type = quote_value(c->m, c->level, scope->type);
+  if (out == NULL || type == NULL)
+    return NULL;
+  *out = *scope;
+  out->type = here(c, type);
+  out->next = fin_case_scope(c, scope->next, key);
+  return out->type == NULL || out->next == NULL ? NULL : out;
+}
+
+/* Case I of finCase at the hint *WANT. When *WANT is NULL, the case is
+   inferred and its type goes in *WANT (the hint of the later cases). When
+   KEY is a local, the hint and the case are checked with KEY bound to the
+   literal I (the finAll rule). */
+static const Core *fin_case_arm(Checker *c, const Term *t, const Value **want, const Scope *key, uint64_t i) {
+  const Env *saved = c->env;
+  const Scope *saved_scope = c->scope;
+  const Core *wq = *want == NULL || key == NULL ? NULL : quote_value(c->m, c->level, *want);
+  const Env *bound = key == NULL ? saved : (*want != NULL && wq == NULL ? NULL : env_with(c->m, saved, c->level - 1u - key->level, val_nat(c->m, i)));
+  const Core *out;
+  /* A NULL env is a failure only when a key is bound: with no key, the env
+     stays as it is, and the top-level env is empty (S5a item 5). */
+  if (key != NULL && bound == NULL)
+    return c->m->diag->set ? NULL : nul(FAIL(c, "OOM", "out of memory"));
+  c->env = bound;
+  if (key != NULL)
+    c->scope = fin_case_scope(c, saved_scope, key);
+  if (key != NULL && c->scope == NULL)
+    out = c->m->diag->set ? NULL : nul(FAIL(c, "OOM", "out of memory"));
+  else
+    out = *want == NULL ? infer(c, t, want) : check(c, t, wq == NULL ? *want : here(c, wq));
+  c->scope = saved_scope;
+  c->env = saved;
+  return out;
+}
+
+/* finCase n k c0 .. c(n-1) (S5a, R12): the surface form of OP_FIN_CASE. n
+   is a literal Nat, k : Fin n, and the case count is n (else FIN_CASE). The
+   cases take the rest of the spine. With no hint, the type of case 0 is the
+   type of each case. finCase 0 k is ex falso. The core is OP_FIN_CASE (k,
+   c0, ..., c(n-1)). */
+static const Core *rule_fin_case(Call *k) {
   Checker *c = k->c;
-  const Value *res = k->hint;
-  const Core *b = check(c, k->args[0], flag_type(c));
-  const Core *yes = b == NULL ? NULL : (res != NULL ? check(c, k->args[1], res) : infer(c, k->args[1], &res));
-  const Core *no = yes == NULL ? NULL : check(c, k->args[2], res);
+  const Value *res = k->outer;
+  const Core *n = check(c, k->args[0], nat_type(c));
+  const Value *nv = here(c, n);
+  const Value *fin = nv == NULL ? NULL : tyop(c, OP_FIN, 1, nv, NULL, NULL);
+  const Core *key = fin == NULL ? NULL : check(c, k->args[1], fin);
+  const Scope *local = key != NULL && k->args[1]->kind == TERM_VAR ? find_local(c, k->args[1]->name) : NULL;
+  uint32_t count = k->argc - 2u;
+  const Core **cores = arena_alloc(c->m->arena, ((size_t)count + 1u) * sizeof *cores);
+  uint32_t i;
+  k->used = k->argc;
+  if (key == NULL)
+    return NULL;
+  if (cores == NULL)
+    return nul(FAIL(c, "OOM", "out of memory"));
+  if (nv->kind != VAL_NAT)
+    return nul(FAIL(c, "FIN_CASE", "finCase needs a literal case count, found %s", show(c, nv)));
+  if (nv->nat != (uint64_t)count)
+    return nul(FAIL(c, "FIN_CASE", "finCase %llu needs %llu cases, found %u", (unsigned long long)nv->nat, (unsigned long long)nv->nat, count));
+  if (res == NULL && count == 0u)
+    return nul(FAIL(c, "TYPE_INFER", "finCase 0 needs an expected type"));
+  cores[0] = key;
+  for (i = 0; i < count; i++) {
+    cores[i + 1u] = fin_case_arm(c, k->args[i + 2u], &res, local, i);
+    if (cores[i + 1u] == NULL)
+      return NULL;
+  }
   k->type = res;
-  return op3(c, OP_FLAG_IF, 0, 3, b, yes, no);
+  {
+    Core *out = (Core *)core_op(c, OP_FIN_CASE, 0, 0, cores, count + 1u);
+    if (out == NULL)
+      return NULL;
+    out->a = quote_value(c->m, c->level, res);
+    return out->a == NULL ? NULL : out;
+  }
 }
 
 static const Core *rule(Call *k) {
@@ -1775,10 +1873,10 @@ static const Core *rule(Call *k) {
     return rule_nat2(k);
   case RULE_FIN_OP:
     return rule_fin_op(k);
+  case RULE_FIN_CASE:
+    return rule_fin_case(k);
   case RULE_FIN:
     return rule_fin(k);
-  case RULE_FLAG_IF:
-    return rule_flag_if(k);
   }
   return NULL;
 }
@@ -2069,15 +2167,15 @@ static const Core *elab_spine(Checker *c, const Term *t, const Value *hint, cons
     argc++;
     head = head->left;
   }
-  if (argc > SPINE_MAX)
+  if (!resolve_head(c, head, &h))
+    return NULL;
+  if (argc > SPINE_MAX && !(h.kind == HEAD_BUILTIN && h.builtin->rule == RULE_FIN_CASE))
     return nul(FAIL(c, "TYPE_ARITY", "an application has more than %u arguments", SPINE_MAX));
   args = arena_alloc(c->m->arena, ((size_t)argc + 1u) * sizeof *args);
   if (args == NULL)
     return nul(FAIL(c, "OOM", "out of memory"));
   for (head = t, i = argc; head->kind == TERM_APP; head = head->left)
     args[--i] = head->right;
-  if (!resolve_head(c, head, &h))
-    return NULL;
   return h.kind == HEAD_TERM ? apply_term(c, head, args, argc, hint, type) : apply_known(c, t, &h, args, argc, hint, type);
 }
 
@@ -2155,7 +2253,13 @@ static const Core *check_fin_all(Checker *c, const Term *t, const Value *hint, u
       return nul(FAIL(c, "FIN_CASE", "the case %llu of Fin %llu fails: %s: %s", (unsigned long long)j, (unsigned long long)n, code, inner));
     }
   }
-  return core_op(c, OP_FIN_CASE, 0, 0, args, (uint32_t)n + 1u);
+  {
+    Core *out = (Core *)core_op(c, OP_FIN_CASE, 0, 0, args, (uint32_t)n + 1u);
+    if (out == NULL)
+      return NULL;
+    out->a = quote_value(c->m, c->level + 1u, closure_apply(c->m, hint, val_var(c->m, c->level)));
+    return out->a == NULL ? NULL : out;
+  }
 }
 
 static const Core *check_lam(Checker *c, const Term *t, const Value *hint, const Value **type) {
@@ -2639,18 +2743,32 @@ int check_program(Arena *arena, const DeclList *decls, Machine *m, Diag *diag) {
   return 1;
 }
 
+/* The literal bound of a Fin type, or 0 (Nat, Fin 0 and a Fin at a variable
+   bound all give 0). */
+static uint64_t fin_literal(const Value *t) {
+  const Value *n = t != NULL && val_is(t, OP_FIN) ? t->args[0] : NULL;
+  return n != NULL && n->kind == VAL_NAT ? n->nat : 0u;
+}
+
+/* A first-order type: Nat (BOUND 0), or Fin n at a literal n that is not 0
+   (BOUND n). */
+static int first_order(const Value *t, uint64_t *bound) {
+  *bound = fin_literal(t);
+  return (t != NULL && val_is(t, OP_NAT)) || *bound != 0u;
+}
+
 int entry_of(Machine *m, const Value *type, Entry *out) {
   const Value *t = type;
+  uint64_t bound = 0;
   memset(out, 0, sizeof *out);
   while (t != NULL && t->kind == VAL_PI && out->param_count < ENTRY_PARAMS_MAX) {
-    if (!val_is(t->dom, OP_NAT) && !val_is(t->dom, OP_FLAG))
+    if (!first_order(t->dom, &bound))
       return 0;
-    out->param_flag[out->param_count] = val_is(t->dom, OP_FLAG);
+    out->param_bound[out->param_count] = bound;
     t = closure_apply(m, t, val_var(m, out->param_count));
     out->param_count++;
   }
-  out->result_flag = val_is(t, OP_FLAG);
-  return val_is(t, OP_NAT) || val_is(t, OP_FLAG);
+  return first_order(t, &bound);
 }
 
 static int parse_u64(const char *s, uint64_t *out) {
@@ -2668,14 +2786,17 @@ static int parse_u64(const char *s, uint64_t *out) {
   return 1;
 }
 
-/* An entry argument: a Nat in decimal, or a Flag as 0 or 1. */
-static const Value *entry_arg(Machine *m, const char *text, int is_flag) {
+/* An entry argument: a Nat in decimal, or a Fin n as a decimal below n (BOUND
+   is n, or 0 for a Nat). */
+static const Value *entry_arg(Machine *m, const char *text, uint64_t bound) {
   uint64_t n = 0;
-  if (!parse_u64(text, &n) || (is_flag && n > 1u)) {
-    diag_fail(m->diag, "EVAL_ARGS", m->def, "'%s' is not a %s", text, is_flag ? "Flag (0 or 1)" : "Nat (0 to 2^64-1)");
-    return NULL;
-  }
-  return is_flag ? val_make(m, n == 1u ? OP_FLAG_YES : OP_FLAG_NO, 0, 0, NULL, NULL, NULL) : val_nat(m, n);
+  if (parse_u64(text, &n) && (bound == 0u || n < bound))
+    return val_nat(m, n);
+  if (bound == 0u)
+    diag_fail(m->diag, "EVAL_ARGS", m->def, "'%s' is not a Nat (0 to 2^64-1)", text);
+  else
+    diag_fail(m->diag, "EVAL_ARGS", m->def, "'%s' is not a Fin %llu (0 to %llu)", text, (unsigned long long)bound, (unsigned long long)(bound - 1u));
+  return NULL;
 }
 
 static int print_result(Machine *m, const char *name, const Value *v, FILE *out, FILE *err) {
@@ -2688,11 +2809,6 @@ static int print_result(Machine *m, const char *name, const Value *v, FILE *out,
     fprintf(err, "langc: EVAL_OVERFLOW: %s: a Nat operation overflowed past 2^64-1\n", name);
     return 0;
   case VAL_OP:
-    if (val_is(v, OP_FLAG_YES) || val_is(v, OP_FLAG_NO)) {
-      fprintf(out, "%d\n", val_is(v, OP_FLAG_YES));
-      return 0;
-    }
-    break;
   case VAL_UNIV:
   case VAL_LAM:
   case VAL_PI:
@@ -2744,7 +2860,7 @@ int eval_command(Machine *m, const char *name, char *const *args, int arg_count,
     return 2;
   }
   for (i = 0; i < entry.param_count && v != NULL; i++) {
-    const Value *arg = entry_arg(m, args[i], entry.param_flag[i]);
+    const Value *arg = entry_arg(m, args[i], entry.param_bound[i]);
     v = arg == NULL ? NULL : apply_value(m, v, arg);
   }
   if (v == NULL)

@@ -204,10 +204,6 @@ static int op_json(Out *o, const Value *type, const Value *v) {
       return internal(o, "a Nat or Fin value that is not a number");
     snprintf(num, sizeof num, "%llu", (unsigned long long)v->nat);
     return put_text(o, num);
-  case OP_FLAG:
-    if (val_is(v, OP_FLAG_YES))
-      return put_text(o, "true");
-    return val_is(v, OP_FLAG_NO) ? put_text(o, "false") : internal(o, "a Flag value that is not yes or no");
   case OP_UNIT:
     return put_text(o, "{}");
   case OP_PROD:
@@ -226,8 +222,6 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_GLUE:
     return refuse(o, "a Glue element");
   case OP_UNIT_VAL:
-  case OP_FLAG_YES:
-  case OP_FLAG_NO:
   case OP_PAIR:
   case OP_INL:
   case OP_INR:
@@ -258,12 +252,15 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_NAT_ADD:
   case OP_NAT_SUB:
   case OP_NAT_MUL:
+  case OP_SUCC:
   case OP_NAT_EQ:
   case OP_NAT_LE:
-  case OP_FLAG_IF:
   case OP_PROJ:
   case OP_FIN_ADD:
   case OP_FIN_NEG:
+  case OP_FIN_MUL:
+  case OP_FIN_VAL:
+  case OP_FIN_EQ:
   case OP_FIN_CASE:
   case OP_GLUE_ELEM:
   case OP_UNGLUE:
