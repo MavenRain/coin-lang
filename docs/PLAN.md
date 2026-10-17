@@ -38,7 +38,7 @@ them as open items:
 | Univalence | a path from `(Ω, f)` to `(Ω', g)` | `ua : Equiv A B -> Path U A B` through Glue types. Transport along `ua e` computes to `e` by definition (uaβ). A path in `FinSet` is a path in `U` and a path over it in `isFinSet`, which is a proposition. | S3, S5 |
 | Bijective coupling | `g ∘ σ = f` | `couple s h : Path (Rand T) (Om, f) (Om', g)` for `s : Equiv (El Om) (El Om')` and `h : (w : El Om) -> Path T (f w) (g (s w))`. A library def from `ua`, `uaArrow` (the CTT lemma that turns pointwise paths into a path over `ua`) and Sigma paths. The domain def `couple T Om Om2 f g s h n` also takes the size path `n : Path Nat (card Om) (card Om2)`, because the kit has no pigeonhole (S6b, R5). The truncation part is `squash1` (S6b, R6). | S6 |
 | Equal fiber sizes | equal distributions exactly when `σ` exists | Both directions are guest functions. Coupling to equal counts: `count` is invariant under transport. Equal counts to coupling: `match` makes `s` from the fibers in enumeration order. `match` needs decidable equality on `T` (O10). S6c: the count is the domain def `randCount T dec r t` (a `carrierSum` of 1 or 0 by `dec`; `examples/formers.lang` declares a def `count`, so the domain name is `randCount`). The domain def `countCouple` is the direction "coupling to equal counts": the path of `randCount` along a path in `Rand T` (R9). The builtin `fiberMatch` gives the forward map between two literal carriers, with the fibers in enumeration order (R10). The domain def `match` makes `s` with `isoToEquiv` of the two `fiberAt` maps. It takes forward and backward fallback maps, the inverse laws, the value law `h` and the size path, and the check proves each law at a literal instance. At unequal counts a law does not check (`FIN_CASE`). | S6 |
-| Schnorr HVZK | `z = r + e·w`, `r ↦ r + e·w` on `Z_q` | Group: the subgroup of order 11 of the units mod 23, generator 2 (O5). Transcript: commitment, challenge, response. Coins: `(e, r)` (real) and `(e, z)` (simulated), both `Fin 11 * Fin 11`. `s (e, r) := (e, r + e*w)`. Real: `(g^r, e, r + e*w)`. Simulated: `(g^z * y^(-e), e, z)` with `y := g^w`. Each pointwise path is `refl` after enumeration (`finAll`, section 5). | S7 |
+| Schnorr HVZK | `z = r + e·w`, `r ↦ r + e·w` on `Z_q` | Group: the subgroup of order 11 of the units mod 23, generator 2 (O5). Transcript: commitment, challenge, response. Coins: `(e, r)` (real) and `(e, z)` (simulated), both `Fin 11 * Fin 11`. `s (e, r) := (e, r + e*w)`. Real: `(g^r, e, r + e*w)`. Simulated: `(g^z * y^(-e), e, z)` with `y := g^w`. Each pointwise path is `refl` after enumeration (`finAll`, section 5). S7a: `examples/schnorr.lang`. The coin carrier is the Sigma `(e : Fin 11) * Fin 11` (`A * B` does not parse), with the 121-coin FinSet copied from `examples/finset.lang` (R10). `pow` is an example def (R1). The generator is 2, the witness is 7 and `y` is 13. `realVar` and `simVar : Rand SchT` are top-level instances (121 rows each in `test/json/schnorr.json`). `hvzk` is a Pi def over `Fin 1` by `couple`, with `isoToEquiv` of `mask` and `unmask` (R3, R4), because a top-level path in `Rand T` stops with `OOM` (O13). The inverse laws and `h` are named curried defs plus eta defs. | S7 |
 | Graph isomorphism HVZK | | Graph: `Fin n -> Fin n -> Fin 2`. Coins: a challenge bit and a permutation. The example has n = 4 (24 permutations, 48 coins). The coin space is `Fin 2 * Fin 24`, and a table maps each index to its permutation (O9). Each permutation `p` also gives the loop `ua p` in `FinSet` at `Fin 4`. The 24 loops are distinct in the JSON output. | S7 |
 | Finite multisets | the set truncation of the groupoid | `Bag T := Trunc0 (Rand T)`. `Rand T` is a groupoid when `T` is a set. `count : Bag T -> T -> Nat` is an elimination into `Nat`, which is a set. S6c (R8 (a) fallback): `Rand T` is in `Type 1`, the `Trunc0` parameter is in `Type 0` and the kit has no cumulativity, so `Trunc0 (Rand T)` refuses `TYPE_MISMATCH`. The domain family `Trunc0One` is `Trunc0` with its parameter in `Type 1`, and `Bag T := Trunc0One (Rand T)`. The count is the domain def `countBag`, a fold into `Nat` with `isSetNat`. | S6 |
 
@@ -274,6 +274,13 @@ are new or change:
   the simulated variable and the path between them. Mutants: a wrong
   witness `w`, a wrong `s` and a non-bijective `s` must each give a check
   refusal.
+  S7a (done): `examples/schnorr.lang` and `test/json/schnorr.json` (R1 to
+  R4, R10 (a)): `pow`, the group, `schReal`, `schSim`, `realVar`,
+  `simVar`, `mask`, `unmask`, the laws, `hC` and `hEta`, and the Pi def
+  `hvzk`. The evals `powAt` (12), `yAt` (13) and `simAt` (a point of
+  `simVar`). The check refusals `schnorr-wrong-w`, `schnorr-wrong-s` and
+  `schnorr-nonbij` (R8 (a)), each `FIN_CASE`. No kernel change: the
+  top-level path `OOM` stays open (R9 (a), O13).
 - S8: `SPEC.md`, `probe/CAPABILITY.md`, `docs/STATUS.md`,
   `docs/VALIDATION.md` and `README.md`. Final gate.
 - Gate: `make check` in this directory.
@@ -297,7 +304,10 @@ are new or change:
   the coin spaces, and the caller gives the `isFinSet` proof of that
   Sigma. The graded bind is not in S6.
 - O5: the Schnorr group: the subgroup of order 11 mod 23 (default) or the
-  additive group `Z_q` with generator 1.
+  additive group `Z_q` with generator 1. Closed in S7a (ruling R1 (a)):
+  the subgroup of order 11 of the units mod 23, generator 2. `pow` is a
+  fold of `finMul` over `finVal`, an example def in
+  `examples/schnorr.lang`, not a domain def.
 - O6: "JSON deserialization" read as the kit JSON document.
 - O7: `Trunc0` is in the language, because the design names it.
   strategy-lang O3 forbade truncation; this design asks for it.
@@ -317,3 +327,12 @@ are new or change:
   on a constant line. The check refusal `j-refl-conv` shows that `refl`
   does not prove it at a neutral motive.
 - O12: fill `probe/CAPABILITY.md` (S8).
+- O13: a top-level `Path FinSet` or a top-level path in `Rand T` stops
+  with `OOM` (S6a, S6b). Located in S7 (ruling R9 (a), left open): the
+  arena (1 GiB, `src/main.c:10`) fills with the interval normal form
+  (`ival_meet`, `ival_neg`, `ival_make`, `ival_lit` and `ival_join` in
+  `src/front/eval.c`) while `path_rules` in `src/json.c` evaluates the
+  path for the JSON print (under `json_document`, `instance_json`,
+  `value_json`, `typed_json` and `path_json`). At the 121 Schnorr coins
+  the growth comes earlier, in the check. So each HVZK path is a Pi def
+  over `Fin 1`, with no JSON instance.

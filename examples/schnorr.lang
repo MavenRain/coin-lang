@@ -1,0 +1,61 @@
+-- Schnorr HVZK (S7a, rulings R1 to R4 and R10 (a)). The group is the
+-- subgroup of order 11 of the units mod 23, with the generator schG = 2.
+-- The witness is schW = 7 and the statement is schY = schG^schW = 13.
+-- A coin is the pair (e, r) of the challenge and the nonce, so the coin
+-- space has 121 points. The real transcript is (g^r, e, r + e*w). The
+-- simulator draws (e, z) and gives (g^z * y^(-e), e, z). The path hvzk
+-- from realVar to simVar in Rand SchT is perfect HVZK: couple takes the
+-- equivalence of the coin spaces (mask, the map (e, r) to (e, r + e*w),
+-- and its inverse unmask) and a path at each coin (hEta).
+
+-- The 121 coins: a copy of examples/finset.lang:26-33 (R10 (a)).
+def Carrier11 : Type 0 := (e : Fin 11) * Fin 11
+def lift11 : (x : Fin 11) -> Fin 121 := fun (x : Fin 11) => finCase 11 x 0 1 2 3 4 5 6 7 8 9 10
+def fwd11 : (p : Carrier11) -> Fin 121 := fun (p : Carrier11) => finAdd 121 (finMul 121 (lift11 (witness p)) 11) (lift11 (payload p))
+def bwd11 : (k : Fin 121) -> Carrier11 := fun (k : Fin 121) => finCase 121 k (pack 0 0) (pack 0 1) (pack 0 2) (pack 0 3) (pack 0 4) (pack 0 5) (pack 0 6) (pack 0 7) (pack 0 8) (pack 0 9) (pack 0 10) (pack 1 0) (pack 1 1) (pack 1 2) (pack 1 3) (pack 1 4) (pack 1 5) (pack 1 6) (pack 1 7) (pack 1 8) (pack 1 9) (pack 1 10) (pack 2 0) (pack 2 1) (pack 2 2) (pack 2 3) (pack 2 4) (pack 2 5) (pack 2 6) (pack 2 7) (pack 2 8) (pack 2 9) (pack 2 10) (pack 3 0) (pack 3 1) (pack 3 2) (pack 3 3) (pack 3 4) (pack 3 5) (pack 3 6) (pack 3 7) (pack 3 8) (pack 3 9) (pack 3 10) (pack 4 0) (pack 4 1) (pack 4 2) (pack 4 3) (pack 4 4) (pack 4 5) (pack 4 6) (pack 4 7) (pack 4 8) (pack 4 9) (pack 4 10) (pack 5 0) (pack 5 1) (pack 5 2) (pack 5 3) (pack 5 4) (pack 5 5) (pack 5 6) (pack 5 7) (pack 5 8) (pack 5 9) (pack 5 10) (pack 6 0) (pack 6 1) (pack 6 2) (pack 6 3) (pack 6 4) (pack 6 5) (pack 6 6) (pack 6 7) (pack 6 8) (pack 6 9) (pack 6 10) (pack 7 0) (pack 7 1) (pack 7 2) (pack 7 3) (pack 7 4) (pack 7 5) (pack 7 6) (pack 7 7) (pack 7 8) (pack 7 9) (pack 7 10) (pack 8 0) (pack 8 1) (pack 8 2) (pack 8 3) (pack 8 4) (pack 8 5) (pack 8 6) (pack 8 7) (pack 8 8) (pack 8 9) (pack 8 10) (pack 9 0) (pack 9 1) (pack 9 2) (pack 9 3) (pack 9 4) (pack 9 5) (pack 9 6) (pack 9 7) (pack 9 8) (pack 9 9) (pack 9 10) (pack 10 0) (pack 10 1) (pack 10 2) (pack 10 3) (pack 10 4) (pack 10 5) (pack 10 6) (pack 10 7) (pack 10 8) (pack 10 9) (pack 10 10)
+def sec11 : (k : Fin 121) -> Path (Fin 121) (fwd11 (bwd11 k)) k := fun (k : Fin 121) => refl
+def ret11c : (e : Fin 11) -> (x : Fin 11) -> Path Carrier11 (bwd11 (fwd11 (pack e x))) (pack e x) := fun (e : Fin 11) => fun (x : Fin 11) => refl
+def ret11 : (p : Carrier11) -> Path Carrier11 (bwd11 (fwd11 p)) p := fun (p : Carrier11) => ret11c (witness p) (payload p)
+def prodFinSet11 : FinSet := pack Carrier11 (pack 121 (trunc1 (Equiv Carrier11 (Fin 121)) (isoToEquiv Carrier11 (Fin 121) fwd11 bwd11 sec11 ret11)))
+
+-- pow b r is b^r mod 23: a fold of finMul over the value of r.
+def pow : Fin 23 -> Fin 11 -> Fin 23 := fun (b : Fin 23) (r : Fin 11) => fold (fun (acc : Fin 23) => finMul 23 acc b) 1 (finVal 11 r)
+-- The group, the witness and the statement.
+def schG : Fin 23 := 2
+def schW : Fin 11 := 7
+def schY : Fin 23 := pow schG schW
+def SchT : Type 0 := (a : Fin 23) * ((e : Fin 11) * Fin 11)
+-- The real prover and the simulator, each a map from the coins.
+def schReal : Carrier11 -> SchT := fun (p : Carrier11) => pack (pow schG (payload p)) (pack (witness p) (finAdd 11 (payload p) (finMul 11 (witness p) schW)))
+def schSim : Carrier11 -> SchT := fun (p : Carrier11) => pack (finMul 23 (pow schG (payload p)) (pow schY (finNeg 11 (witness p)))) (pack (witness p) (payload p))
+
+-- mask and unmask are inverse maps of the coins. Each law is a named
+-- curried def over the two Fin 11 parts plus an eta def: finAll checks a
+-- law only at a literal Fin n binder of a named def. The laws come before
+-- hC, so a mask that is not a bijection fails at maskSecC (R8 (a)).
+def mask : Carrier11 -> Carrier11 := fun (p : Carrier11) => pack (witness p) (finAdd 11 (payload p) (finMul 11 (witness p) schW))
+def unmask : Carrier11 -> Carrier11 := fun (p : Carrier11) => pack (witness p) (finSub 11 (payload p) (finMul 11 (witness p) schW))
+def maskSecC : (e : Fin 11) -> (z : Fin 11) -> Path Carrier11 (mask (unmask (pack e z))) (pack e z) := fun (e : Fin 11) => fun (z : Fin 11) => refl
+def maskSec : (p : Carrier11) -> Path Carrier11 (mask (unmask p)) p := fun (p : Carrier11) => maskSecC (witness p) (payload p)
+def maskRetC : (e : Fin 11) -> (r : Fin 11) -> Path Carrier11 (unmask (mask (pack e r))) (pack e r) := fun (e : Fin 11) => fun (r : Fin 11) => refl
+def maskRet : (p : Carrier11) -> Path Carrier11 (unmask (mask p)) p := fun (p : Carrier11) => maskRetC (witness p) (payload p)
+-- At each coin, the real transcript is the simulated transcript at the
+-- masked coin. The group law g^(r+e*w) * y^(-e) = g^r holds by
+-- conversion at each closed coin, so hC is refl.
+def hC : (e : Fin 11) -> (r : Fin 11) -> Path SchT (schReal (pack e r)) (schSim (mask (pack e r))) := fun (e : Fin 11) => fun (r : Fin 11) => refl
+def hEta : (p : Carrier11) -> Path SchT (schReal p) (schSim (mask p)) := fun (p : Carrier11) => hC (witness p) (payload p)
+
+-- The real and the simulated transcript variables (the JSON pins).
+def realVar : Rand SchT := pack prodFinSet11 schReal
+def simVar : Rand SchT := pack prodFinSet11 schSim
+-- hvzk is a Pi def over Fin 1, as coupleRot in couple.lang (R4 (a)): a
+-- top-level path in Rand T stops with OOM. An eval of an end of hvzk also
+-- stops with OOM, so the evals use the points below.
+def hvzk : (x : Fin 1) -> Path (Rand SchT) realVar simVar :=
+  fun (x : Fin 1) => couple SchT prodFinSet11 prodFinSet11 schReal schSim (isoToEquiv Carrier11 Carrier11 mask unmask maskSec maskRet) hEta refl
+
+-- Point instances: 2^10 = 12, the statement y = 13, and simVar at the
+-- coin (3, 5): 2^5 * 13^(-3) = 9 * 2 = 18.
+def powAt : Fin 23 := pow schG 10
+def yAt : Fin 23 := schY
+def simAt : SchT := payload simVar (pack 3 5)

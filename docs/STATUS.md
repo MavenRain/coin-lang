@@ -1684,3 +1684,108 @@ to the fallback, and maps between empty carriers. `make check` passes:
 24 examples, 11 parse refusals, 69 check refusals, 61 evals, 24 JSON
 goldens, 4 build refusals, 6 regressions, 2 printer cases and 82 C path
 cases (0 failed). The clang check passes. No CI checks were weakened.
+
+## S7a
+
+S7a (the Schnorr HVZK example: items 1 and 2 of the S7 kickoff) is
+complete, STAGED until the USER commit (one commit for S7a, R12 (a)). The
+S7 rulings R1 to R12 are all (a). The baseline is the USER commit 5877e1d
+(24/11/69/61/24/4/6/2, 82 C cases). S7a changes no kernel code and no
+domain def.
+
+Item 1 (session 1): `examples/schnorr.lang` (R1 to R4, R10 (a)). It
+copies the 121-coin FinSet block of `examples/finset.lang` (`Carrier11`
+to `prodFinSet11`). `pow b r` is `b^r` mod 23, a fold of `finMul 23` over
+`finVal 11 r` (R1 (a)). The group is the subgroup of order 11 of the
+units mod 23: the generator `schG := 2`, the witness `schW := 7` and the
+statement `schY := pow schG schW` (13). The transcript type is `SchT :=
+(a : Fin 23) * ((e : Fin 11) * Fin 11)`. `schReal (e, r)` is `(g^r, e, r
++ e*w)` and `schSim (e, z)` is `(g^z * y^(-e), e, z)` (R2 (a)). `mask (e,
+r)` is `(e, r + e*w)`, and `unmask` subtracts with `finSub`. The inverse
+laws `maskSecC`/`maskSec` and `maskRetC`/`maskRet` are named curried defs
+plus eta defs, before `h`. `hC`/`hEta` is the value law: the real
+transcript at a coin is the simulated transcript at the masked coin
+(`refl` at each closed coin, with no group lemma). `realVar` and `simVar
+: Rand SchT` are top-level instances (`pack prodFinSet11 schReal` and
+`pack prodFinSet11 schSim`). `hvzk : (x : Fin 1) -> Path (Rand SchT)
+realVar simVar` is `couple` of `isoToEquiv Carrier11 Carrier11 mask
+unmask maskSec maskRet`, `hEta` and `refl` (R3 (a), R4 (a)). The point
+instances are `powAt := pow schG 10`, `yAt := schY` and `simAt :=
+payload simVar (pack 3 5)`. `test/json/schnorr.json` pins `prodFinSet11`,
+`schG`, `schW`, `schY`, `realVar` and `simVar` (121 rows each), `powAt`,
+`yAt` and `simAt`. 110 of the 121 rows of `realVar` and `simVar` differ
+(at `e = 0` both rows are `(g^r, 0, r)`), so the pin is asymmetric. The
+evals `schnorr powAt => 12`, `schnorr yAt => 13` and `schnorr simAt =>
+pack 18 (pack 3 5)` (2^5 * 13^(-3) = 9 * 2 = 18 mod 23). The check of
+`schnorr.lang` takes 0.77 s and 744 MB peak RSS; the build takes 0.78 s
+and 698 MB (the arena limit is 1 GiB).
+
+Item 2 (session 1): the check refusals of the PLAN mutants (R8 (a)), each
+at the full 121-coin instance. Each gives `FIN_CASE` (two nested curried
+cases) with `PATH_END` inside:
+- `schnorr-wrong-w.lang`: `schY` from w = 6, `mask` and `unmask` with w =
+  7. `FIN_CASE: hC: the case 1 of Fin 11 fails: FIN_CASE: the case 0 of
+  Fin 11 fails: PATH_END: the path at i1 is pack 1 (pack 1 7), but the
+  type needs pack 2 (pack 1 7)`.
+- `schnorr-wrong-s.lang`: `mask` and `unmask` with 6, not the witness 7.
+  The same site: `... but the type needs pack 12 (pack 1 6)`.
+- `schnorr-nonbij.lang`: `mask (e, r) := (e, e*w)`, not a bijection.
+  `FIN_CASE: maskSecC: the case 0 of Fin 11 fails: FIN_CASE: the case 1
+  of Fin 11 fails: PATH_END: the path at i1 is pack 0 0, but the type
+  needs pack 0 1`. The laws come before `hC`, so the code names
+  `maskSecC`.
+
+The top-level path `OOM` (R9 (a), left open; PLAN O13). The arena is
+`src/front/base.c:18-44` (`arena_grow` :24-34, 64 KiB chunks), with the 1
+GiB limit at `src/main.c:10`. A backtrace at each 128 MiB of growth in the
+build of `rotTop := coupleRot 0` at `Fin 3` (check ok, build `OOM` in
+1.84 s) puts each sample and the `OOM` under `json_document` >
+`instance_json` > `value_json` > `typed_json` > `path_json` >
+`path_rules` (`src/json.c`), with the interval algebra as the inner
+frames: `ival_meet`, `ival_neg`, `ival_make`, `ival_lit` and `ival_join`
+(`src/front/eval.c:194-290`). So the arena fills with the interval normal
+form (negation and meet of faces) while `path_rules` evaluates the path.
+At the 121 Schnorr coins the growth comes earlier, in the check
+(`elab_inner`): a top-level `hvzkTop` stops with `OOM` at check. An eval
+of an end of `hvzk` at one coin also stops with `OOM`. Open: which
+`path_rules` branch grows the normal form.
+
+Gate: `make check` is GREEN at examples 25, parse 11, check 72, evals 64,
+json 25, build refusals 4, regressions 6, printer 2, path regressions 82
+C cases (0 failed): the S7a target. The clang `-Wswitch-enum` pass is
+clean. The dash scan is clean.
+
+Docs: `docs/PLAN.md` row 41, section 7 (S7a done), O5 closed and the new
+open item O13 (the R9 site). `SPEC.md`: no change (no trust point
+changes). `docs/host/README.md`: no change (no domain def, builtin or
+JSON rule changes).
+
+Deviations from the plan (the S7 kickoff sections 1.1, 2 and 4; the S7
+HANDOFF session 1 gives the probes):
+
+- Items 1 and 2 are done in one session (the kickoff planned two), so the
+  close is session 2, not session 3.
+- The check of `schnorr.lang` uses 744 MB peak RSS in 0.77 s. The survey
+  probe of `hvzk` (`c1a-hvzk-noends`) used 562 MB in 2.15 s. The example
+  adds the comments and the three point instances; the cause of the
+  difference is not measured. The run stays below the 1 GiB arena.
+- The refusal files hold the full program (with `realVar`, `simVar` and
+  `hvzk`), but the check stops at `hC` or `maskSecC`.
+- `schnorr.json` also pins `prodFinSet11`, `schG`, `schW` and `schY`:
+  each top-level def that is not a Pi def is an instance.
+- The R9 site is the new open item O13 in PLAN section 8 (the kickoff
+  named no item number).
+
+Mutants: N1 to N4 ran in session 1, one at a time (`sd -s` at one site,
+`make -B check`, then `build/path-regressions` under the mutant; `sd -s`
+back). The `shasum` of the file before and after each mutant is equal.
+Each kill came from a repo test, not from a compile error. No C case
+kills an S7a mutant (path regressions 0 failed under each, as planned).
+No mutant needed a new refusal, pin or def.
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| N1 | `pow`: the fold starts at 0, not 1 | the evals `schnorr powAt` (got 0), `schnorr yAt` (0) and `schnorr simAt` (`pack 0 (pack 3 5)`); `schnorr.json`. A consistent algebra: the example still checks, as the kickoff planned |
+| N2 | `schSim`: `finNeg 11` dropped (`y^e`, not `y^(-e)`) | `examples/schnorr.lang` (`FIN_CASE: hC: the case 1 of Fin 11 fails: ... needs pack 8 (pack 1 7)`); the 3 evals; `schnorr.json` |
+| N3 | `mask`: `schW` to `(witness p)` (`unmask` unchanged) | `examples/schnorr.lang` (`FIN_CASE: maskSecC: the case 1 of Fin 11 fails: ... the path at i1 is pack 1 5, but the type needs pack 1 0`); the 3 evals; `schnorr.json` |
+| N4 | `schG`: 2 to 4 (also of order 11) | the evals `schnorr powAt` (got 6), `schnorr yAt` (8) and `schnorr simAt` (`pack 2 (pack 3 5)`); `schnorr.json`. A consistent algebra: the example still checks, as the kickoff planned |

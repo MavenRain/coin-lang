@@ -67,3 +67,6 @@ couple-point.lang FIN_CASE
 count-no-dec.lang TYPE_MISMATCH
 bag-fold-no-set.lang TYPE_MISMATCH
 match-unequal.lang FIN_CASE
+schnorr-wrong-w.lang FIN_CASE
+schnorr-wrong-s.lang FIN_CASE
+schnorr-nonbij.lang FIN_CASE
