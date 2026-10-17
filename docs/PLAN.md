@@ -39,7 +39,7 @@ them as open items:
 | Bijective coupling | `g ∘ σ = f` | `couple s h : Path (Rand T) (Om, f) (Om', g)` for `s : Equiv (El Om) (El Om')` and `h : (w : El Om) -> Path T (f w) (g (s w))`. A library def from `ua`, `uaArrow` (the CTT lemma that turns pointwise paths into a path over `ua`) and Sigma paths. The domain def `couple T Om Om2 f g s h n` also takes the size path `n : Path Nat (card Om) (card Om2)`, because the kit has no pigeonhole (S6b, R5). The truncation part is `squash1` (S6b, R6). | S6 |
 | Equal fiber sizes | equal distributions exactly when `σ` exists | Both directions are guest functions. Coupling to equal counts: `count` is invariant under transport. Equal counts to coupling: `match` makes `s` from the fibers in enumeration order. `match` needs decidable equality on `T` (O10). S6c: the count is the domain def `randCount T dec r t` (a `carrierSum` of 1 or 0 by `dec`; `examples/formers.lang` declares a def `count`, so the domain name is `randCount`). The domain def `countCouple` is the direction "coupling to equal counts": the path of `randCount` along a path in `Rand T` (R9). The builtin `fiberMatch` gives the forward map between two literal carriers, with the fibers in enumeration order (R10). The domain def `match` makes `s` with `isoToEquiv` of the two `fiberAt` maps. It takes forward and backward fallback maps, the inverse laws, the value law `h` and the size path, and the check proves each law at a literal instance. At unequal counts a law does not check (`FIN_CASE`). | S6 |
 | Schnorr HVZK | `z = r + e·w`, `r ↦ r + e·w` on `Z_q` | Group: the subgroup of order 11 of the units mod 23, generator 2 (O5). Transcript: commitment, challenge, response. Coins: `(e, r)` (real) and `(e, z)` (simulated), both `Fin 11 * Fin 11`. `s (e, r) := (e, r + e*w)`. Real: `(g^r, e, r + e*w)`. Simulated: `(g^z * y^(-e), e, z)` with `y := g^w`. Each pointwise path is `refl` after enumeration (`finAll`, section 5). S7a: `examples/schnorr.lang`. The coin carrier is the Sigma `(e : Fin 11) * Fin 11` (`A * B` does not parse), with the 121-coin FinSet copied from `examples/finset.lang` (R10). `pow` is an example def (R1). The generator is 2, the witness is 7 and `y` is 13. `realVar` and `simVar : Rand SchT` are top-level instances (121 rows each in `test/json/schnorr.json`). `hvzk` is a Pi def over `Fin 1` by `couple`, with `isoToEquiv` of `mask` and `unmask` (R3, R4), because a top-level path in `Rand T` stops with `OOM` (O13). The inverse laws and `h` are named curried defs plus eta defs. | S7 |
-| Graph isomorphism HVZK | | Graph: `Fin n -> Fin n -> Fin 2`. Coins: a challenge bit and a permutation. The example has n = 4 (24 permutations, 48 coins). The coin space is `Fin 2 * Fin 24`, and a table maps each index to its permutation (O9). Each permutation `p` also gives the loop `ua p` in `FinSet` at `Fin 4`. The 24 loops are distinct in the JSON output. | S7 |
+| Graph isomorphism HVZK | | Graph: `Fin n -> Fin n -> Fin 2`. Coins: a challenge bit and a permutation. The example has n = 4 (24 permutations, 48 coins). The coin space is `Fin 2 * Fin 24`, and a table maps each index to its permutation (O9). Each permutation `p` also gives the loop `ua p` in `FinSet` at `Fin 4`. The 24 loops are distinct in the JSON output. S7b: `examples/gi.lang`. The coin carrier is the Sigma `(e : Fin 2) * Fin 24`, with the 48-coin FinSet copied from `examples/finset.lang` (R5). `giPerm` is the lexicographic table. G0 is the path 0-1-2-3 and G1 is `giAct 9 G0` (the witness is the row 9, (1, 2, 3, 0)). The transcript type is `GiT := (c : Fin 64) * ((b : Fin 2) * Fin 24)`, with `c` the edge code of the permuted graph (R6). `giRealVar` and `giSimVar : Rand GiT` are top-level instances (48 rows each in `test/json/gi.json`). `giHvzk` is a Pi def over `Fin 1` by `couple` (O13). The loop `giLoop k` is the `finSetLoop` shape of `examples/finset.lang`, generic in an equivalence, at `isoToEquiv` of the row k and its inverse row (R7). The top-level pin `loopCodes : Rand (Fin 256)` gives at k the code of the transport of 0, 1, 2 and 3 along the loop k: 24 distinct codes. | S7 |
 | Finite multisets | the set truncation of the groupoid | `Bag T := Trunc0 (Rand T)`. `Rand T` is a groupoid when `T` is a set. `count : Bag T -> T -> Nat` is an elimination into `Nat`, which is a set. S6c (R8 (a) fallback): `Rand T` is in `Type 1`, the `Trunc0` parameter is in `Type 0` and the kit has no cumulativity, so `Trunc0 (Rand T)` refuses `TYPE_MISMATCH`. The domain family `Trunc0One` is `Trunc0` with its parameter in `Type 1`, and `Bag T := Trunc0One (Rand T)`. The count is the domain def `countBag`, a fold into `Nat` with `isSetNat`. | S6 |
 
 ## 3. The no-irrelevance rule
@@ -281,6 +281,17 @@ are new or change:
   `simVar`). The check refusals `schnorr-wrong-w`, `schnorr-wrong-s` and
   `schnorr-nonbij` (R8 (a)), each `FIN_CASE`. No kernel change: the
   top-level path `OOM` stays open (R9 (a), O13).
+  S7b (done): `examples/gi.lang` and `test/json/gi.json` (R3, R5 to R7
+  (a)): the 48 coins, `giPerm`, `giAct`, the edge code `giCode`,
+  `giReal`, `giSim`, `giRealVar`, `giSimVar`, the coin maps `giS` and
+  `giSinv`, the laws, `giHC` and `giH`, and the Pi def `giHvzk`; the 24
+  loops `giLoop` and the pin `loopCodes`. The evals `codeG0` (41),
+  `codeG1` (13) and `permAt` (the row 9 of `giPerm`). The check refusals
+  `gi-wrong-w`, `gi-wrong-s` and `gi-nonbij` (R8 (a)), each `FIN_CASE`.
+  The refusal `gi-loops-distinct` is dropped: a path between two loops
+  stops with `OOM` (O13), so `loopCodes` alone shows that the loops are
+  distinct. No kernel change. S7 (done): the two HVZK examples, each
+  path a Pi def over `Fin 1`, and the PLAN mutants as check refusals.
 - S8: `SPEC.md`, `probe/CAPABILITY.md`, `docs/STATUS.md`,
   `docs/VALIDATION.md` and `README.md`. Final gate.
 - Gate: `make check` in this directory.
@@ -316,7 +327,11 @@ are new or change:
   b`.
 - O9: graph isomorphism coins as `Fin 2 * Fin 24` with a permutation table
   (default), or as the loop type of `FinSet` at `Fin 4`. The second needs a
-  `FinSet` proof for `Equiv (Fin 4) (Fin 4)` (a Lehmer code).
+  `FinSet` proof for `Equiv (Fin 4) (Fin 4)` (a Lehmer code). Closed in
+  S7b (ruling R5 (a)): the coins are `(b : Fin 2) * Fin 24` with the
+  lexicographic `giPerm` table in `examples/gi.lang`. The 24 loops of
+  `FinSet` at `Fin 4` are the Pi def `giLoop` (R7 (a)), not the coin
+  space.
 - O10: `match` needs decidable equality on `T`. S6 proves it for `T` made
   from `Fin`, products and Sigma over `Fin`. Narrowed in S6c (ruling R11
   (a)): the domain has `decEqFin`, `decEqNat`, `decEqProd` (the non-dependent
@@ -335,4 +350,7 @@ are new or change:
   path for the JSON print (under `json_document`, `instance_json`,
   `value_json`, `typed_json` and `path_json`). At the 121 Schnorr coins
   the growth comes earlier, in the check. So each HVZK path is a Pi def
-  over `Fin 1`, with no JSON instance.
+  over `Fin 1`, with no JSON instance. In S7b, a path between two loops
+  of `FinSet` at `Fin 4` (`Path (Path FinSet fin4 fin4) (giLoop 0)
+  (giLoop 1)`) also stops with `OOM`, at the top level and as a Pi def
+  over `Fin 1`.

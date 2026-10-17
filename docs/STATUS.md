@@ -1789,3 +1789,137 @@ No mutant needed a new refusal, pin or def.
 | N2 | `schSim`: `finNeg 11` dropped (`y^e`, not `y^(-e)`) | `examples/schnorr.lang` (`FIN_CASE: hC: the case 1 of Fin 11 fails: ... needs pack 8 (pack 1 7)`); the 3 evals; `schnorr.json` |
 | N3 | `mask`: `schW` to `(witness p)` (`unmask` unchanged) | `examples/schnorr.lang` (`FIN_CASE: maskSecC: the case 1 of Fin 11 fails: ... the path at i1 is pack 1 5, but the type needs pack 1 0`); the 3 evals; `schnorr.json` |
 | N4 | `schG`: 2 to 4 (also of order 11) | the evals `schnorr powAt` (got 6), `schnorr yAt` (8) and `schnorr simAt` (`pack 2 (pack 3 5)`); `schnorr.json`. A consistent algebra: the example still checks, as the kickoff planned |
+
+## S7b
+
+S7b (the graph isomorphism HVZK example: items 3 to 5 of the S7 kickoff)
+is complete, STAGED until the USER commit (one commit for S7b, R12 (a)).
+The S7 rulings R1 to R12 are all (a). The baseline is the USER commit
+7bd9ce1 (S7a: 25/11/72/64/25/4/6/2, 82 C cases). S7b changes no kernel
+code and no domain def. With S7b, S7 is complete.
+
+Item 3 (session 1): `examples/gi.lang` (R3, R5 and R6 (a)). It copies the
+FinSet block of `examples/finset.lang` (`Carrier` to `prodFinSet`) at the
+48 coins `(e : Fin 2) * Fin 24`. `giPerm k` is the permutation k of `Fin
+4` in lexicographic order (24 rows). The graph `giG0` is the path
+0-1-2-3, and the statement `giG1 := giAct 9 giG0` is G0 under the witness
+sigma = `giPerm 9` = (1, 2, 3, 0). `giResp k` is the index of the map i
+to sigma^(-1) (k i), and `giRespInv` is its inverse table (gen_gi.py).
+`giCode G` is the edge code of G in `Fin 64`: the bit 2^n is the edge n
+of (0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3). The transcript type
+is `GiT := (c : Fin 64) * ((b : Fin 2) * Fin 24)` (R6 (a)). `giReal (b,
+k)` is `(code (k G0), b, k)` at b = 0 and `(code (k G0), b, giResp k)` at
+b = 1; `giSim (b, r)` is `(code (r G_b), b, r)`. The coin maps `giS` and
+`giSinv` apply `giResp` and `giRespInv` at b = 1. The inverse laws
+`giSecC`/`giSec` and `giRetC`/`giRet` are named curried defs plus eta
+defs, before `giHC`. `giHC`/`giH` is the value law: the real transcript
+at a coin is the simulated transcript at `giS` of the coin (`refl` at
+each closed coin). `giRealVar` and `giSimVar : Rand GiT` are top-level
+instances (`pack prodFinSet giReal` and `pack prodFinSet giSim`).
+`giHvzk : (x : Fin 1) -> Path (Rand GiT) giRealVar giSimVar` is `couple`
+of `isoToEquiv Carrier Carrier giS giSinv giSec giRet`, `giH` and `refl`
+(R3 (a)). The point instances are `codeG0 := giCode giG0`, `codeG1 :=
+giCode giG1` and `permAt` (the row 9 of `giPerm` as a Sigma: a top-level
+function has no JSON instance). The evals `gi codeG0 => 41` (1 + 8 + 32),
+`gi codeG1 => 13` (1 + 4 + 8) and `gi permAt => pack 1 (pack 2 (pack 3
+0))`. 24 of the 48 rows of `giRealVar` and `giSimVar` differ (at b = 0
+both rows are `(code (k G0), 0, k)`), so the pin is asymmetric: the real
+row 24 is `(41, 1, 18)`, the simulated row 24 is `(13, 1, 0)`.
+
+Item 4 (session 2): the 24 loops of `FinSet` at `Fin 4` (R7 (a)) and the
+check refusals (R8 (a)). `giInv k` is the index of the inverse of the
+permutation k, and the check proves the table laws `giPermSecC` and
+`giPermRetC`. `giLoopOf e` is the loop shape of `finSetLoop` in
+`examples/finset.lang` for an equivalence `e : Equiv (Fin 4) (Fin 4)`:
+`ua` of `e` (`giUa`) and a path over it in `isFinSet` (`giOver`: `refl`
+on the size, and `giSqOver`, `squash1` of two `transp` on the
+truncation). `giEq k` is `isoToEquiv` of the row k and the row `giInv k`,
+and `giLoop k := giLoopOf (giEq k)`. `giTr k x` is the transport of x
+along the loop k (= `giPerm k x`). The top-level pin `loopCodes : Rand
+(Fin 256)` over `finSetFin 24` gives at k the base 4 code of the
+transport of 0, 1, 2 and 3 along the loop k. The 24 codes in `gi.json`
+are distinct: 228 180 216 120 156 108 225 177 201 57 141 45 210 114 198
+54 78 30 147 99 135 39 75 27. So the 24 loops are pairwise distinct (the
+no-irrelevance rule of PLAN section 3 at the permutation coins): with
+proof irrelevance, each loop is `refl` and the 24 codes are one code
+(228, the code of the loop 0). `test/json/gi.json` pins `prodFinSet`, `giRealVar` and
+`giSimVar` (48 rows each), `fin4`, `loopCodes`, `codeG0`, `codeG1` and
+`permAt`. The check of `gi.lang` takes 0.90 s and 549 MB peak RSS; the
+build takes 1.47 s and 578 MB (the arena limit is 1 GiB).
+
+The check refusals hold the full program (with the loops). Each gives
+`FIN_CASE` (two nested curried cases) with `PATH_END` inside:
+- `gi-wrong-w.lang`: `giResp` and `giRespInv` from sigma = `giPerm 10`,
+  G1 from sigma = `giPerm 9`. `FIN_CASE: giHC: the case 1 of Fin 2
+  fails: FIN_CASE: the case 0 of Fin 24 fails: PATH_END: the path at i1
+  is pack 41 (pack 1 13), but the type needs pack 28 (pack 1 13)`.
+- `gi-wrong-s.lang`: the rows 0 and 1 of `giResp` swapped, and the rows
+  18 and 19 of `giRespInv`: a bijection, but not the response. The same
+  site: `... the path at i1 is pack 41 (pack 1 19), but the type needs
+  pack 49 (pack 1 19)`.
+- `gi-nonbij.lang`: the row 1 of `giResp` is the row 0 (18), `giRespInv`
+  unchanged. `FIN_CASE: giSecC: the case 1 of Fin 2 fails: FIN_CASE:
+  the case 19 of Fin 24 fails: PATH_END: the path at i1 is pack 1 18,
+  but the type needs pack 1 19`. The laws come before `giHC`, so the
+  code names `giSecC`.
+
+Item 5 (session 3): the mutants N5 to N8 (below).
+
+Gate: `make check` is GREEN at examples 26, parse 11, check 75, evals 67,
+json 26, build refusals 4, regressions 6, printer 2, path regressions 82
+C cases (0 failed): the S7b target, with check 75 (deviation 2). The
+clang `-Wswitch-enum` pass is clean. The dash scan is clean.
+
+Docs: `docs/PLAN.md` row 42, section 7 (S7b done, S7 done), O9 closed
+(R5 (a)) and the S7b fact in O13. `SPEC.md`: no change (no trust point
+changes). `docs/host/README.md`: no change (no domain def, builtin or
+JSON rule changes).
+
+Deviations from the plan (the S7 kickoff sections 1.2, 2 and 4; the S7
+HANDOFF S7b sessions 1 to 3 give the probes, in
+`lang-template-work/coin-lang-S7-probes/`):
+
+- `giLoop k` is `giLoopOf (giEq k)`, the loop shape generic in a neutral
+  equivalence (probe g4-gen: check 1.82 s, 17 MB). The kickoff planned
+  the S6b loop shape with the row k inside. With `k : Fin 24` in the
+  `squash1` part (g1-loops), the check stops with `OOM: giSqOver` (2.13
+  s, 840 MB). One literal loop at k = 9 (g2-one, a Pi def over `Fin 1`)
+  checks in 1.23 s at 422 MB, so 24 literal loops do not fit in the 1
+  GiB arena.
+- `gi-loops-distinct` is dropped (the kickoff rule for an `OOM`): check
+  75, not 76. The top-level `Path (Path FinSet fin4 fin4) (giLoop 0)
+  (giLoop 1) := refl` (g5-distinct) stops with `OOM: giLoopsBad` (6.84
+  s, 464 MB peak RSS), and the same path as a Pi def over `Fin 1` (g5b)
+  stops with `OOM` (1.76 s, 670 MB). PLAN O13 records it. The 24
+  distinct codes of `loopCodes` show that the loops are distinct.
+- `gi-wrong-s` is the swap form (a bijection, as `schnorr-wrong-s`). The
+  kickoff planned "one row of `giResp` changed", but one changed row of
+  a permutation table is not injective, so the check stops at `giSecC`,
+  the `gi-nonbij` site.
+- `gi.json` also pins `prodFinSet` and `fin4`: each top-level def that is
+  not a Pi def is an instance.
+- The loop pin is `loopCodes` only (no new eval for the loops).
+- N8 is at `giEq` (the forward and backward maps of `isoToEquiv`, and
+  the two laws, swapped): `giLoop` holds no `isoToEquiv` (deviation 1).
+  The laws must swap with the maps, else the check gives a type error.
+- N7 also changes `codeG1` (13 to 14): the kickoff named `codeG0` only.
+- N5 swaps the rows 0 and 1 of `giPerm`. Both rows are involutions and
+  `giInv` fixes them, so `giPermSecC` and `giPermRetC` still hold; they
+  come after `giHC` in the file, so the first code names `giHC` (the
+  kickoff allowed the laws or `giH`).
+
+Mutants: N5 to N8 ran in session 3, one at a time in `examples/gi.lang`
+(`sd -s` at one site, `make -B check`, then `build/path-regressions`
+under the mutant; `sd -s` back). The `shasum` of the file before and
+after each mutant is equal. Each kill came from a repo test, not from a
+compile error. No C case kills an S7b mutant (path regressions 0 failed
+under each, as planned). No mutant needed a new refusal, pin or def. In
+the close session, a build of N8 from a scratch copy gave a `gi.json`
+that differs only in `loopCodes`.
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| N5 | `giPerm`: the rows 0 and 1 swapped | `examples/gi.lang` (`FIN_CASE: giHC: the case 1 of Fin 2 fails: FIN_CASE: the case 0 of Fin 24 fails: PATH_END: the path at i1 is pack 49 (pack 1 18), but the type needs pack 41 (pack 1 18)`); the 3 gi evals; `gi.json` |
+| N6 | `giResp`: the row 0 from 18 to 19 (not injective) | `examples/gi.lang` (`FIN_CASE: giSecC: the case 1 of Fin 2 fails: FIN_CASE: the case 18 of Fin 24 fails: PATH_END: the path at i1 is pack 1 19, but the type needs pack 1 18`); the 3 gi evals; `gi.json` |
+| N7 | `giCode`: the weights 1 and 2 swapped (the edges (0, 1) and (0, 2)) | the evals `gi codeG0` (got 42) and `gi codeG1` (14); `gi.json`. A consistent algebra: the example still checks, as the kickoff planned |
+| N8 | `giEq`: `isoToEquiv (Fin 4) (Fin 4) (giPerm (giInv k)) (giPerm k) (giPermRetC k) (giPermSecC k)` | `gi.json` only (`loopCodes`: 228 180 216 156 120 108 225 177 210 147 114 99 201 141 198 135 78 75 57 45 54 39 30 27, the codes of the inverse loops). A consistent algebra: the example checks and the evals pass, as the kickoff planned |

@@ -70,3 +70,6 @@ match-unequal.lang FIN_CASE
 schnorr-wrong-w.lang FIN_CASE
 schnorr-wrong-s.lang FIN_CASE
 schnorr-nonbij.lang FIN_CASE
+gi-wrong-w.lang FIN_CASE
+gi-wrong-s.lang FIN_CASE
+gi-nonbij.lang FIN_CASE

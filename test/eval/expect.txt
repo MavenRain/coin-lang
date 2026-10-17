@@ -62,3 +62,6 @@ bag matchAt => fun _ => pack 0 2
 schnorr powAt => 12
 schnorr yAt => 13
 schnorr simAt => pack 18 (pack 3 5)
+gi codeG0 => 41
+gi codeG1 => 13
+gi permAt => pack 1 (pack 2 (pack 3 0))
