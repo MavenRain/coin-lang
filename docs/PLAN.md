@@ -293,12 +293,17 @@ are new or change:
   distinct. No kernel change. S7 (done): the two HVZK examples, each
   path a Pi def over `Fin 1`, and the PLAN mutants as check refusals.
 - S8: `SPEC.md`, `probe/CAPABILITY.md`, `docs/STATUS.md`,
-  `docs/VALIDATION.md` and `README.md`. Final gate.
+  `docs/VALIDATION.md` and `README.md`. Final gate. S8 (done, rulings R1
+  to R11 (a)): the five docs of the language as built at `31d73f8`, the
+  stale rows of `docs/host/README.md` and `formers/tcc-json.md`, and the
+  open items O1, O3, O6, O7 and O12 closed. No code change, no new test
+  and no mutant. O10 and O13 stay open. coin-lang is closed at S8.
 - Gate: `make check` in this directory.
 
 ## 8. Open items
 
-- O1: the name coin-lang.
+- O1: the name coin-lang. RULED 2026-10-16 (USER, ruling R6 (a)): the
+  name stays coin-lang.
 - O2: the kernel route. Default: CCHM as in Cubical Agda, local to this
   repository. The agda/cubical library (`ua`, `uaArrow`, `isoToEquiv`,
   `FinSet`, the set truncation) is the reference for the guest prelude.
@@ -307,7 +312,9 @@ are new or change:
   (USER ruling 2026-10-14): the default, CCHM, local to this repository.
 - O3: `FinSet` as a library Sigma over `U` (default) or as a primitive
   universe of codes. A primitive universe still needs Glue for its Kan
-  operations, so it saves no kernel work.
+  operations, so it saves no kernel work. Closed (S5c; recorded in S8,
+  ruling R7 (a)): `FinSet` is the library Sigma `Sigma (A : Type 0)
+  (isFinSet A)` in `Type 1` (`domain/domain.lang`).
 - O4: `bind` on `Rand` uses the Sigma of the coin spaces. This is the bag
   monad. Its distribution is the uniform one when each continuation has a
   coin space of the same size. A graded bind on the product coin space is
@@ -319,9 +326,13 @@ are new or change:
   the subgroup of order 11 of the units mod 23, generator 2. `pow` is a
   fold of `finMul` over `finVal`, an example def in
   `examples/schnorr.lang`, not a domain def.
-- O6: "JSON deserialization" read as the kit JSON document.
+- O6: "JSON deserialization" read as the kit JSON document. Closed in S8
+  (ruling R7 (a)): the reading stands. The JSON document is the one that
+  `langc build` writes (`docs/host/README.md`, section The JSON document).
 - O7: `Trunc0` is in the language, because the design names it.
-  strategy-lang O3 forbade truncation; this design asks for it.
+  strategy-lang O3 forbade truncation; this design asks for it. Closed
+  (S4c; recorded in S8, ruling R7 (a)): the family `Trunc0` is in
+  `domain/domain.lang`, and `examples/quot.lang` uses it.
 - O8: the kit `Eq` goes in S1, or stays as a name for `Path`. Closed in
   S1 (ruling R3 (a)): `Eq` is gone. `Path A a b` is `PathP (fun _ => A) a
   b`.
@@ -336,14 +347,20 @@ are new or change:
   from `Fin`, products and Sigma over `Fin`. Narrowed in S6c (ruling R11
   (a)): the domain has `decEqFin`, `decEqNat`, `decEqProd` (the non-dependent
   pair `(e : A) * B`) and `decEqSigmaFin` (at `(e : Fin a) * Fin b`). A
-  Sigma with a dependent second component has no decision yet.
+  Sigma with a dependent second component has no decision yet. Left open
+  in S8 (ruling R7 (a)): the decision would be a domain def, as
+  `decEqSigmaFin`, not kernel work. No example needs it:
+  `examples/schnorr.lang` and `examples/gi.lang` use no decision.
 - O11: the `J` rule on `refl` is a path (CCHM). It is not a conversion.
   Closed in S2a: `JRefl` in `domain/domain.lang` is a path by `transp`
   on a constant line. The check refusal `j-refl-conv` shows that `refl`
   does not prove it at a neutral motive.
-- O12: fill `probe/CAPABILITY.md` (S8).
-- O13: a top-level `Path FinSet` or a top-level path in `Rand T` stops
-  with `OOM` (S6a, S6b). Located in S7 (ruling R9 (a), left open): the
+- O12: fill `probe/CAPABILITY.md` (S8). Closed in S8 (ruling R2 (a)):
+  `probe/CAPABILITY.md` answers the probe questions for the language as
+  built.
+- O13: the nontrivial `finSetLoop` and `coupleRot` probes (S6a, S6b)
+  stop with `OOM` when emitted as top-level paths. Located in S7
+  (ruling R9 (a), left open): the
   arena (1 GiB, `src/main.c:10`) fills with the interval normal form
   (`ival_meet`, `ival_neg`, `ival_make`, `ival_lit` and `ival_join` in
   `src/front/eval.c`) while `path_rules` in `src/json.c` evaluates the
@@ -353,4 +370,9 @@ are new or change:
   over `Fin 1`, with no JSON instance. In S7b, a path between two loops
   of `FinSet` at `Fin 4` (`Path (Path FinSet fin4 fin4) (giLoop 0)
   (giLoop 1)`) also stops with `OOM`, at the top level and as a Pi def
-  over `Fin 1`.
+  over `Fin 1`. Left open in S8 (ruling R7 (a)): the fix is kernel work
+  in `src/front/eval.c`.
+  Reflexive paths in `FinSet` and `Rand T`, and paths between reflexive
+  loops, can check. At `finSetFin 1`, these reflexive probes build with
+  `JSON_VALUE` when the JSON rules reach a function in the equivalence
+  proof. O13 records the nontrivial probes above.

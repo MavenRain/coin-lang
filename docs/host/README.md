@@ -215,11 +215,17 @@ constructors:
 
 ## The domain
 
-`domain/domain.lang` is the sample domain. `gen/embed.c` embeds it in the
-executable at build time. `domain/README.md` tells how to replace it.
+`domain/domain.lang` is the coin-lang library and the kit sample
+families `Color`, `Item`, `Stack` and `Lot`. `gen/embed.c` embeds it in
+the executable at build time. `domain/README.md` tells how to replace it.
 It holds the equivalence library: `isContr`, `fiber`, `isEquiv`, `Equiv`,
 `idEquiv` and `isoToEquiv`, the univalence defs `ua` and `uaArrow`
-(see Glue), and the circle `S1` (see Higher inductive types). It also
+(see Glue), and the circle `S1` (see Higher inductive types). S5b adds
+the decision defs `Empty` (`Fin 0`), `absurd`, `Not`, `Dec`, `Stable`,
+`decStable` and `isPropNot`, the Hedberg defs `hedbergStable`,
+`hedbergMap`, `hedbergConst`, `hedbergSquare` and `hedberg`, and
+`isSetNat` and `isSetFin`. S5c adds the coin spaces: `isFinSet`,
+`FinSet` (in `Type 1`), `El`, `card` and `finSetFin`. The domain also
 holds `Rand`, `randPure`, `randMap`, `randBind` and `couple` (S6).
 `randBind` takes the `isFinSet` proof of its Sigma coin space as an
 argument (R3), and `couple s h n` takes the size path `n` (R5): the kit
@@ -237,7 +243,9 @@ type. A program def whose type holds a Glue type, for example a path
 over `loopRot1 @ j` or over `ua A B e @ i`, is refused by `langc build`
 too (`JSON_TYPE`: the type has no source syntax). Write it under a Pi
 type: a `Fin n` binder lets the checker's finAll fallback check each closed
-case.
+case. The builtins `finAdd`, `finNeg`, `finMul`, `finVal`, `succ`,
+`decEqFin` and `decEqNat` are not domain defs: the checker gives them
+(`BUILTINS` in `src/front/check.c`).
 
 ## Limits
 

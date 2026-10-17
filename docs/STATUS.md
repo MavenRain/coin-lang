@@ -1,34 +1,82 @@
 # coin-lang status
 
-> Write here: one paragraph. Say which milestone the build implements, and
-> which milestone it does not complete yet.
+The build implements the slices S0 to S8 of `docs/PLAN.md` section 7.
+coin-lang is closed at S8 (ruling R11 (a)). S8 changes no code: it writes
+the docs. The final gate counts are: examples 26, parse refusals 11, check
+refusals 75, evals 67, json 26, build refusals 4, regressions 6, printer
+regressions 2, and path regressions 0 failed with 82 C checks. The open
+items O10 and O13 stay open.
 
 ## Implemented
 
-> Write here: one item for each feature that works. Name the former (F1 to
-> F15), the core type or the core operation.
+- S0: the design, the plan and the compiler scaffold from the lang-template
+  `hosts/tcc-json` kit.
+- S1: the interval `I`, `PathP`, `Path`, `refl`, `sym`, `cong` and
+  `funExt` (F12). The kit `Eq` is gone.
+- S2a: the `transp` builtin and the `J` library: `transport`, `subst`, `J`
+  and `JRefl` (F13).
+- S2b: the `hcomp` builtin, systems and `trans`.
+- S3a: the Fin core (`Fin`, `finAdd`), the `finAll` rule and
+  `isoToEquiv`.
+- S3b: Glue and univalence (`ua`) with transport tables.
+- S3c: Glue and universe composition with `uaArrow`.
+- S4a: path constructors, the circle `S1` and the formal `hcomp`.
+- S4b: propositional truncation `Trunc1` and family transport.
+- S4c: set truncation `Trunc0` and set quotients `Quot`.
+- S5a: `finCase` and the Fin ring (`finMul`, `finVal`).
+- S5b: decidable equality (`decEqFin`, `decEqNat`, `Dec`) and Hedberg.
+- S5c: `FinSet`, the product FinSets and their JSON.
+- S6a: `Rand` values, carrier sums and the JSON tables.
+- S6b: couplings, `randBind` and the finite path JSON.
+- S6c: the pair decisions, the counts, `Bag` and `fiberMatch`.
+- S7a: the Schnorr HVZK example (`examples/schnorr.lang`).
+- S7b: the graph isomorphism HVZK example (`examples/gi.lang`) and its
+  refusals.
 
-- <feature>.
+## Remaining work
 
-## Remaining M0 work
-
-> Write here: one numbered item for each missing feature. Say what each item
-> needs first.
-
-1. <work item>.
+- O10: a decision for a Sigma with a dependent second component. It would
+  be a domain def, as `decEqSigmaFin`. No example needs it.
+- O13: the S6/S7 nontrivial paths and the S7b path between `giLoop 0` and
+  `giLoop 1` exhaust the arena. The interval normal form grows in
+  `src/front/eval.c` (`docs/PLAN.md` section 8).
 
 ## Known limits
 
-> Write here: one item for each limit of the current build, with its cause
-> (a fuel budget, a host limit, a stack size).
-
-- <limit>.
+- The arena is 1 GiB (`ARENA_LIMIT_BYTES`, `src/main.c:10`). A run that
+  fills it stops with `OOM`. Thus each HVZK path is a Pi def over `Fin 1`,
+  with no JSON instance (O13).
+- The evaluator has a fuel budget of 20,000,000 steps
+  (`EVAL_FUEL_STEPS`, `src/front/core.h:17`).
+- The universes are `Type 0` and `Type 1`, without cumulativity
+  (`test/check/cumulative.lang`: `TYPE_MISMATCH`; `test/check/type2.lang`:
+  `TYPE_UNIVERSE`).
+- A def has no implicit arguments.
+- The `finAll` rule checks each closed case of a `Fin n` domain (literal
+  `n`) only when the ordinary check fails.
+- The JSON `type` text is at most 4096 bytes (`JSON_TYPE_MAX`,
+  `src/json.c:7`), and the JSON nesting is at most 2000 levels
+  (`JSON_DEPTH_LIMIT`, `src/json.h:15`). `langc build` refuses a program
+  def of an `Equiv` type (`JSON_VALUE`) and a def whose type holds a Glue
+  type (`JSON_TYPE`).
 
 ## Internal boundaries
 
-> Write here: one paragraph for each module group. Say which module holds
-> which job, which tests check which tables, and which types a program
-> cannot use.
+`src/main.c` is the `langc` command line. `src/front/lexer.c` and
+`src/front/parser.c` read the source (the grammar is at the head of
+`parser.c`). `src/front/check.c` is the type checker; its `BUILTINS`
+table gives the builtins. `src/front/eval.c` holds the evaluator, the
+conversion test, quote and the printer. `src/json.c` is the JSON target.
+`src/front/base.c` and `src/front/front.c` hold the shared support code.
+`gen/embed.c` embeds `domain/domain.lang` in the executable.
+
+`test/gate.sh` runs the examples, the parse refusals (`test/parse/`), the
+check refusals (`test/check/`), the evals (`test/eval/expect.txt`), the
+JSON goldens (`test/json/`) and the build refusals (`test/emit/`).
+`make check` also runs `test/regressions.js` and
+`test/printer-regressions.js` under node, and `test/path-regressions.c`
+(82 C checks, the `failed += ` lines).
+A program cannot declare a family: the families are in `domain/` only.
 
 ## S1
 
@@ -1923,3 +1971,28 @@ that differs only in `loopCodes`.
 | N6 | `giResp`: the row 0 from 18 to 19 (not injective) | `examples/gi.lang` (`FIN_CASE: giSecC: the case 1 of Fin 2 fails: FIN_CASE: the case 18 of Fin 24 fails: PATH_END: the path at i1 is pack 1 19, but the type needs pack 1 18`); the 3 gi evals; `gi.json` |
 | N7 | `giCode`: the weights 1 and 2 swapped (the edges (0, 1) and (0, 2)) | the evals `gi codeG0` (got 42) and `gi codeG1` (14); `gi.json`. A consistent algebra: the example still checks, as the kickoff planned |
 | N8 | `giEq`: `isoToEquiv (Fin 4) (Fin 4) (giPerm (giInv k)) (giPerm k) (giPermRetC k) (giPermSecC k)` | `gi.json` only (`loopCodes`: 228 180 216 156 120 108 225 177 210 147 114 99 201 141 198 135 78 75 57 45 54 39 30 27, the codes of the inverse loops). A consistent algebra: the example checks and the evals pass, as the kickoff planned |
+
+## S8
+
+S8 writes the docs of the language as built at `31d73f8` (rulings R1 to
+R11 all (a), USER 2026-10-16). It changes no code and adds no test.
+
+- `SPEC.md` (R1), `probe/CAPABILITY.md` (R2, O12), `docs/VALIDATION.md`
+  (R3), `README.md` (R4) and the summary at the top of this file (R5)
+  follow the strategy-lang form.
+- O1 is ruled: the name stays coin-lang (R6). The docs facts close O3, O6,
+  O7 and O12 (R7). O10 and O13 stay open (`docs/PLAN.md` section 8).
+- `docs/host/README.md` (`## The domain`) and `formers/tcc-json.md` (F5,
+  F12, F13 and the JSON note) now match the language as built (R8).
+- S8 runs no mutant (R9): it changes no code.
+- The kernel has Sigma eta: `conv_pair` in `src/front/eval.c` compares a
+  pair with the projections of a neutral. A scratch probe (a pair type
+  path by `refl`) gives `ok` (`probe/CAPABILITY.md` section 8).
+- C checks: `docs/VALIDATION.md` counts the `failed += ` lines of
+  `test/path-regressions.c` (82 at S6c, S7a and S7b). The gate lines of
+  the slice sections above count the C cases in a different way, so the
+  two numbers can differ.
+
+Gate: examples 26, parse refusals 11, check refusals 75, evals 67, json 26,
+build refusals 4, regressions 6, printer regressions 2, path regressions 0
+failed (82 C checks). `make check-clang` prints only the cc command line.
