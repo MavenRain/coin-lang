@@ -100,7 +100,19 @@ Trust point (S6a, S6 ruling R7 (a)): the builtin `carrierSum A f` sums
 Fin a) (Fin b)`). The kernel does not prove that this sum is invariant
 under each bijection of the carrier. The operation reads the carrier
 type, not its truncated enumeration. At other carriers it stays stuck.
-`count` and the size of a Sigma coin space are guest defs over it (S6c).
+The count `randCount` is a guest def over it (S6c).
+
+The builtin `fiberMatch A B T eq f g fallback x` (S6c) is not
+a trust point. It gives the forward map between two literal finite
+carriers, with the fibers of `f` and `g` matched in enumeration order.
+It requires `fallback : A -> B` and returns `fallback x` when the target
+fiber has no point at the required rank. This argument prevents a
+failed search from constructing a value of `Empty`.
+It reads the carrier types, as `carrierSum` does, and at other carriers
+it stays stuck. The domain def `match` takes the two inverse laws, the
+value law and the size path as arguments, plus fallback maps in both
+directions. The check proves each law
+at the instance. So a wrong map gives a refusal, not a false path.
 
 ## 9. Open items
 

@@ -1,0 +1,5 @@
+-- randCount takes the decision of the paths in T before the Rand value.
+-- This def puts the Rand value in the place of the decision, so the
+-- check refuses it.
+def r : Rand (Fin 3) := pack (finSetFin 3) (fun (x : Fin 3) => x)
+def n : Nat := randCount (Fin 3) r 0

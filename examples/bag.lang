@@ -1,0 +1,45 @@
+-- Decidable equality of pairs (S6c item 8, ruling R11 (a)): decEqSigmaFin
+-- a b decides a path in (e : Fin a) * Fin b by decEqProd over decEqFin.
+-- Each def below selects 0 for inl and 1 for inr with either, so its
+-- value is a Fin 2 literal (a bare decision inr holds a function, which
+-- has no JSON form). The carrier (e : Fin 2) * Fin 3 has a != b.
+-- The second components differ (0 and 2): inr.
+def decPairAt : Path (Fin 2) (either (fun (_ : Path ((e : Fin 2) * Fin 3) (pack 1 0) (pack 1 2)) => 0) (fun (_ : Not (Path ((e : Fin 2) * Fin 3) (pack 1 0) (pack 1 2))) => 1) (decEqSigmaFin 2 3 (pack 1 0) (pack 1 2))) 1 := refl
+-- The first components differ (0 and 1): inr.
+def decPairFst : Path (Fin 2) (either (fun (_ : Path ((e : Fin 2) * Fin 3) (pack 0 2) (pack 1 2)) => 0) (fun (_ : Not (Path ((e : Fin 2) * Fin 3) (pack 0 2) (pack 1 2))) => 1) (decEqSigmaFin 2 3 (pack 0 2) (pack 1 2))) 1 := refl
+-- The pairs are equal: inl.
+def decPairEq : Path (Fin 2) (either (fun (_ : Path ((e : Fin 2) * Fin 3) (pack 1 2) (pack 1 2)) => 0) (fun (_ : Not (Path ((e : Fin 2) * Fin 3) (pack 1 2) (pack 1 2))) => 1) (decEqSigmaFin 2 3 (pack 1 2) (pack 1 2))) 0 := refl
+-- hedberg at the pair carrier: a closed square reduces to a constant.
+def sqPair : Path (Path ((e : Fin 2) * Fin 3) (pack 1 2) (pack 1 2)) (fun (_ : I) => pack 1 2) (fun (_ : I) => pack 1 2) := hedberg ((e : Fin 2) * Fin 3) (decEqSigmaFin 2 3) (pack 1 2) (pack 1 2) (fun (_ : I) => pack 1 2) (fun (_ : I) => pack 1 2)
+-- Counts (S6c item 9, rulings R8 and R9 (a)). r3 is the rotation x + 1
+-- on Fin 3, so the value 0 has one coin (the coin 2): countAt. pairR has
+-- six coins with values in the pair carrier (e : Fin 2) * Fin 3; three
+-- coins have the value pack 1 0, and randCount compares the pairs by
+-- decEqSigmaFin: countPair. countBagAt reads the count of r3 through the
+-- truncation Bag. cplCount is the count of 0 along the coupling
+-- coupleRot of r3 and the identity rotR (as in couple.lang), a path from
+-- 1 to 1, and cplEnd is its end at i1. cplCount is a Pi def, as
+-- coupleRot.
+def r3 : Rand (Fin 3) := pack (finSetFin 3) (fun (x : Fin 3) => finAdd 3 x 1)
+def countAt : Path Nat (randCount (Fin 3) (decEqFin 3) r3 0) 1 := refl
+def pairR : Rand ((e : Fin 2) * Fin 3) := pack (finSetFin 6) (fun (k : Fin 6) => finCase 6 k (pack 0 0) (pack 1 0) (pack 1 0) (pack 1 0) (pack 0 2) (pack 1 2))
+def countPair : Path Nat (randCount ((e : Fin 2) * Fin 3) (decEqSigmaFin 2 3) pairR (pack 1 0)) 3 := refl
+def countBagAt : Path Nat (countBag (Fin 3) (decEqFin 3) (trunc0One (Rand (Fin 3)) r3) 0) 1 := refl
+def rotR : Rand (Fin 3) := pack (finSetFin 3) (fun (x : Fin 3) => x)
+def coupleRot : (x : Fin 1) -> Path (Rand (Fin 3)) r3 rotR := fun (x : Fin 1) => couple (Fin 3) (finSetFin 3) (finSetFin 3) (fun (x : Fin 3) => finAdd 3 x 1) (fun (x : Fin 3) => x) (isoToEquiv (Fin 3) (Fin 3) (fun (r : Fin 3) => finAdd 3 r 1) (fun (r : Fin 3) => finAdd 3 r 2) (fun (k : Fin 3) => refl) (fun (k : Fin 3) => refl)) (fun (w : Fin 3) => refl) refl
+def cplCount : (x : Fin 1) -> Path Nat (randCount (Fin 3) (decEqFin 3) r3 0) (randCount (Fin 3) (decEqFin 3) rotR 0) := fun (x : Fin 1) => countCouple (Fin 3) (decEqFin 3) r3 rotR (coupleRot 0) 0
+def cplEnd : Path Nat (cplCount 0 @ i1) 1 := refl
+-- Match (S6c item 10, ruling R10 (a)). f6 and g6 have three coins of each
+-- value in Fin 2, so their counts are equal. gSig has the same counts on
+-- the carrier (e : Fin 2) * Fin 3 (a != b). fiberMatch sends the coin 3 of
+-- f6 (the second coin of value 0) to the second coin of value 0 of gSig:
+-- pack 0 2. matchTab is the table of fiberMatch from f6 to gSig. matchCpl
+-- is the coupling of f6 and g6 by match; each law is refl at each literal
+-- coin. matchCpl is a Pi def, as coupleRot.
+def f6 : Fin 6 -> Fin 2 := fun (k : Fin 6) => finCase 6 k 0 1 1 0 1 0
+def g6 : Fin 6 -> Fin 2 := fun (k : Fin 6) => finCase 6 k 1 1 0 0 0 1
+def gSig : ((e : Fin 2) * Fin 3) -> Fin 2 := fun (p : (e : Fin 2) * Fin 3) => finCase 2 (witness p) (finCase 3 (payload p) 1 0 0) (finCase 3 (payload p) 1 0 1)
+def matchAt : Path ((e : Fin 2) * Fin 3) (fiberMatch (Fin 6) ((e : Fin 2) * Fin 3) (Fin 2) (fiberEq (Fin 2) (decEqFin 2)) f6 gSig (fun (_ : Fin 6) => pack 0 0) 3) (pack 0 2) := refl
+def matchTab : Rand ((e : Fin 2) * Fin 3) := pack (finSetFin 6) (fun (k : Fin 6) => fiberMatch (Fin 6) ((e : Fin 2) * Fin 3) (Fin 2) (fiberEq (Fin 2) (decEqFin 2)) f6 gSig (fun (_ : Fin 6) => pack 0 0) k)
+def matchCpl : (x : Fin 1) -> Path (Rand (Fin 2)) (pack (finSetFin 6) f6) (pack (finSetFin 6) g6) :=
+  fun (x : Fin 1) => match (Fin 2) (decEqFin 2) (finSetFin 6) (finSetFin 6) f6 g6 (fun (_ : Fin 6) => 0) (fun (_ : Fin 6) => 0) (fun (k : Fin 6) => refl) (fun (k : Fin 6) => refl) (fun (k : Fin 6) => refl) refl

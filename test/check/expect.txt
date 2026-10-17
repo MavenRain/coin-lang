@@ -64,3 +64,6 @@ rand-type0.lang TYPE_MISMATCH
 carrier-sum-codomain.lang TYPE_MISMATCH
 couple-size.lang PATH_END
 couple-point.lang FIN_CASE
+count-no-dec.lang TYPE_MISMATCH
+bag-fold-no-set.lang TYPE_MISMATCH
+match-unequal.lang FIN_CASE

@@ -56,3 +56,6 @@ rand sumAt => fun _ => 10
 rand sumSig => fun _ => 36
 couple coupleAt0 => 0
 couple unitCard => 3
+bag countAt => fun _ => 1
+bag countPair => fun _ => 3
+bag matchAt => fun _ => pack 0 2

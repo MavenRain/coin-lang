@@ -1,0 +1,9 @@
+-- match takes the inverse laws of the two fiberAt maps. f6 has three
+-- coins of each value, g6u has four coins of value 0 and two coins of
+-- value 1, so the counts are not equal. fiberMatch has no coin of g6u at
+-- the rank of the third coin of value 1 of f6, so it uses the fallback.
+-- The inverse law then fails at the literal instance.
+def f6 : Fin 6 -> Fin 2 := fun (k : Fin 6) => finCase 6 k 0 1 1 0 1 0
+def g6u : Fin 6 -> Fin 2 := fun (k : Fin 6) => finCase 6 k 1 1 0 0 0 0
+def badCpl : (x : Fin 1) -> Path (Rand (Fin 2)) (pack (finSetFin 6) f6) (pack (finSetFin 6) g6u) :=
+  fun (x : Fin 1) => match (Fin 2) (decEqFin 2) (finSetFin 6) (finSetFin 6) f6 g6u (fun (_ : Fin 6) => 0) (fun (_ : Fin 6) => 0) (fun (k : Fin 6) => refl) (fun (k : Fin 6) => refl) (fun (k : Fin 6) => refl) refl

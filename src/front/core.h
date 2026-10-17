@@ -72,7 +72,8 @@ typedef enum {
   OP_GLUE,     /* Glue A phi sys: a type; sys as in OP_HCOMP, each branch pack T e */
   OP_GLUE_ELEM, /* glue: phi, sys, a; sys as in OP_HCOMP, each branch t */
   OP_UNGLUE,   /* unglue: A, phi, sys, g; stuck when no rule applies */
-  OP_CARRIER_SUM /* carrierSum A f: the sum of f over the points of A (S6a, R7) */
+  OP_CARRIER_SUM, /* carrierSum A f: the sum of f over the points of A (S6a, R7) */
+  OP_FIBER_MATCH  /* fiberMatch A B T eq f g fallback x: fiber matching with a default map */
 } Op;
 
 /* The instance of pure, map, bind and filter (formers F5 and F8). */

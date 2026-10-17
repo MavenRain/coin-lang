@@ -84,7 +84,8 @@ typedef enum {
   RULE_GLUE,
   RULE_GLUE_ELEM,
   RULE_UNGLUE,
-  RULE_CARRIER_SUM
+  RULE_CARRIER_SUM,
+  RULE_FIBER_MATCH
 } Rule;
 
 typedef struct {
@@ -148,6 +149,7 @@ static const Builtin BUILTINS[] = {
   {"glue", 2, RULE_GLUE_ELEM, OP_GLUE_ELEM, OP_NAT, 0},
   {"unglue", 1, RULE_UNGLUE, OP_UNGLUE, OP_NAT, 0},
   {"carrierSum", 2, RULE_CARRIER_SUM, OP_CARRIER_SUM, OP_NAT, 0},
+  {"fiberMatch", 8, RULE_FIBER_MATCH, OP_FIBER_MATCH, OP_NAT, 0},
   {"natAdd", 2, RULE_NAT2, OP_NAT_ADD, OP_NAT, 0},
   {"natSub", 2, RULE_NAT2, OP_NAT_SUB, OP_NAT, 0},
   {"natMul", 2, RULE_NAT2, OP_NAT_MUL, OP_NAT, 0},
@@ -1716,6 +1718,31 @@ static const Core *rule_carrier_sum(Call *k) {
   return op3(c, OP_CARRIER_SUM, 0, 2, a, f, NULL);
 }
 
+/* fiberMatch A B T eq f g fallback x: A, B, T : Type 0, eq : T -> T
+   -> Fin 2, f : A -> T, g : B -> T, fallback : A -> B, x : A.
+   The fallback makes the operation total even when a fiber is empty. */
+static const Core *rule_fiber_match(Call *k) {
+  Checker *c = k->c;
+  const Value *u = val_univ(c->m, 0);
+  const Core *args[8];
+  const Value *t;
+  args[0] = check(c, k->args[0], u);
+  args[1] = args[0] == NULL ? NULL : check(c, k->args[1], u);
+  args[2] = args[1] == NULL ? NULL : check(c, k->args[2], u);
+  if (args[2] == NULL)
+    return NULL;
+  t = here(c, args[2]);
+  args[3] = check(c, k->args[3], val_arrow(c->m, t, val_arrow(c->m, t, tyop(c, OP_FIN, 1, val_nat(c->m, 2), NULL, NULL))));
+  args[4] = args[3] == NULL ? NULL : check(c, k->args[4], val_arrow(c->m, here(c, args[0]), t));
+  args[5] = args[4] == NULL ? NULL : check(c, k->args[5], val_arrow(c->m, here(c, args[1]), t));
+  args[6] = args[5] == NULL ? NULL : check(c, k->args[6], val_arrow(c->m, here(c, args[0]), here(c, args[1])));
+  args[7] = args[6] == NULL ? NULL : check(c, k->args[7], here(c, args[0]));
+  if (args[7] == NULL)
+    return NULL;
+  k->type = here(c, args[1]);
+  return core_op(c, OP_FIBER_MATCH, 0, 0, args, 8);
+}
+
 /* ENV with the entry at index IX set to V: the entries before IX are
    copied, the tail is shared. */
 static const Env *env_with(Machine *m, const Env *env, uint32_t ix, const Value *v) {
@@ -1905,6 +1932,8 @@ static const Core *rule(Call *k) {
     return rule_unglue(k);
   case RULE_CARRIER_SUM:
     return rule_carrier_sum(k);
+  case RULE_FIBER_MATCH:
+    return rule_fiber_match(k);
   case RULE_NAT2:
     return rule_nat2(k);
   case RULE_FIN_OP:

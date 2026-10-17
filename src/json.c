@@ -253,6 +253,7 @@ static int op_json(Out *o, const Value *type, const Value *v) {
   case OP_NAT_SUB:
   case OP_NAT_MUL:
   case OP_CARRIER_SUM:
+  case OP_FIBER_MATCH:
   case OP_SUCC:
   case OP_NAT_EQ:
   case OP_NAT_LE:

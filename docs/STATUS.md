@@ -1538,3 +1538,149 @@ including zero. Seven of these cases failed before the fix. `make check`
 passes with 74 C path cases (0 failed); the other gate counts remain
 23/11/66/58/23/4/6/2. The clang and dash checks pass. No test or CI
 requirements were weakened.
+
+## S6c
+
+S6c (decidable equality of pairs, `count`, `Bag` and `match`: items 8 to
+10 of the S6 kickoff) is complete, STAGED until the USER commit (one
+commit for S6c, R15 (a)). The S6 rulings R1 to R15 are all (a). The S6b
+commit 9189977 adds the USER section `### S6b staged review` to the
+staged S6b tree, with 9 C cases. So the S6c C target is 76 (74 + 2), not
+the kickoff 66.
+
+Item 8 (session 12): `domain/domain.lang` adds `decEqProd : (A B : Type
+0) -> (decisions on A and B) -> (x y : (e : A) * B) -> Dec (Path ((e :
+A) * B) x y)` (R11 (a)). It decides the first components, then the
+second ones. The `inl` case is `fun i => pack (p @ i) (q @ i)`. Each
+`inr` case maps a path of pairs to a path of one component (a projection
+along the path). `decEqSigmaFin a b` is `decEqProd` at `Fin a` and `Fin
+b`. `examples/bag.lang`: `decPairAt` (the second components differ: 1),
+`decPairFst` (the first components differ: 1), `decPairEq` (equal: 0)
+and `sqPair` (`hedberg` at `(e : Fin 2) * Fin 3`).
+
+Item 9 (session 13): the R8 probe. `Trunc0 (Rand T)` refuses
+`TYPE_MISMATCH: Bag: expected a term of type Type 0, found a term of type
+Type 1`: the `Trunc0` parameter is in `Type 0` and the kit has no
+cumulativity. A program cannot declare a family (`REFUSE_DATA`, rule
+R1). So the domain adds the R8 (a) fallback: the family `Trunc0One (A :
+Type 1)`, which is `Trunc0` with the constructors `trunc0One` and
+`squash0One`. The domain defs, after `couple`: `randCount T dec r t`
+(R8 (a): the `carrierSum` over `El (witness r)` of `either (fun _ => 1)
+(fun _ => 0) (dec (payload r w) t)`), `Bag T := Trunc0One (Rand T)`,
+`countBag` (a fold into `Nat` with `isSetNat`) and `countCouple` (R9
+(a), the direction "coupling to equal counts": `fun i => randCount T dec
+(p @ i) t` for a path `p` in `Rand T`). `examples/bag.lang`: `r3`,
+`countAt` (1), `pairR` (a `Rand ((e : Fin 2) * Fin 3)` over `finSetFin
+6`), `countPair` (the count of `pack 1 0` by `decEqSigmaFin`: 3),
+`countBagAt` (1), `rotR`, `coupleRot`, `cplCount` (a Pi def over `Fin
+1`: `countCouple` along `coupleRot 0`, a path from 1 to 1) and `cplEnd`
+(1). The check refusals `count-no-dec.lang` (a `Rand` value in the place
+of the decision: `TYPE_MISMATCH`) and `bag-fold-no-set.lang` (a `Bag`
+fold into `Nat` with the point case only: `TYPE_MISMATCH`, the fold
+needs one case for each constructor). The evals `bag countAt => fun _ =>
+1` and `bag countPair => fun _ => 3`. The C case "count stays stuck along
+a couple path".
+
+Item 10 (sessions 14 and 15): the builtin `fiberMatch A B T eq f g x :
+B` (R10 (a)): a new Op `OP_FIBER_MATCH` in `src/front/core.h`, the
+`OP_NAMES`, `OP_ARITY` (7) and `BUILTINS` rows, `RULE_FIBER_MATCH` and
+`rule_fiber_match` in `src/front/check.c`, and the 3 `-Wswitch-enum` arms
+(`transp_data` and `reduce_op` in `src/front/eval.c`, `op_json` in
+`src/json.c`). In `eval.c`, `next_point` walks a literal carrier in the
+`carrierSum` order, and `fiber_match` gives the forward map: when `x` is
+the point of `A` with `k` points of the same fiber before it, the result
+is the point `k` of the same fiber in `B`. It is stuck when a carrier is
+not literal, when `x` is not a point of `A`, or when `B` has no such
+point. The domain defs `fiberEq T dec` (1 for a path, 0 for a
+refutation), `fiberAt` (the forward map as a def) and `match` (R10 (a),
+the direction "equal counts to a coupling"): `couple` of `isoToEquiv` of
+the two `fiberAt` maps, with the inverse laws `s` and `r`, the value law
+`h` and the size path `n` as arguments. `fiberMatch` is not a trust
+point: the check proves each law at the instance (`SPEC.md` section 8).
+`examples/bag.lang`: `f6`, `g6`, `gSig` (on `(e : Fin 2) * Fin 3`),
+`matchAt` (`pack 0 2`), `matchTab` (a `Rand` of the matched pairs, the
+JSON table `(0,1) (0,0) (1,0) (0,2) (1,2) (1,1)`) and `matchCpl` (a Pi
+def over `Fin 1`: `match` at `Fin 6`, each law refl). The check refusal
+`match-unequal.lang` (`FIN_CASE`), the eval `bag matchAt => fun _ =>
+pack 0 2` and the C case "match table" (`json_contains` at the carrier
+`(e : Fin 2) * Fin 3`). The domain grows from 214 to 264 lines.
+
+Gate: `make check` is GREEN at examples 24, parse 11, check 69, evals
+61, json 24, build refusals 4, regressions 6, printer 2, path
+regressions 76 C cases (0 failed). The clang `-Wswitch-enum` pass is
+clean. The dash scan is clean.
+
+Docs: `docs/PLAN.md` rows 39, 40 and 43, section 7 (S6c done, S6 done),
+O4 closed and O10 narrowed. `SPEC.md` section 8: the `fiberMatch` note
+(not a trust point) and the `randCount` name. `docs/host/README.md`: the
+`fiberMatch` builtin and the S6c domain defs.
+
+Deviations from the plan (the S6 kickoff sections 1.3, 2 and 4; the
+sessions 12 to 15 of the S6 HANDOFF give the probes):
+
+- The count def is `randCount`, not `count`. `examples/formers.lang`
+  declares a def `count`, and a domain def is a core name, so a domain
+  `count` makes `formers.lang` refuse `REFUSE_NAME`. No golden changes.
+- `Bag T` is `Trunc0One (Rand T)`, not `Trunc0 (Rand T)` (the R8 (a)
+  fallback, see item 9).
+- The kickoff names `countBag` and `cplCount` in `examples/bag.lang`.
+  `countBag` is the domain def, so the instance is `countBagAt`. The
+  domain def of direction 1 is `countCouple`, and `bag.lang` keeps
+  `cplCount`.
+- The C case "count stays stuck along a couple path" is a
+  `domain_refuses` case, not the planned round trip of the interior. The
+  interior prints 9273 bytes, more than the 8192 byte `value` buffer, so
+  `value_print` fails with no diag. With a 16384 byte buffer, the replay
+  refuses `GLUE_EQUIV` (the printed `isoToEquiv` in the Glue type does
+  not check again: a printer limit). So the case is the S6a stuck shape:
+  `Path (Path Nat 1 1) (fun i => randCount ... (coupleRot 0 @ i) 0) (fun
+  _ => 1) := refl` refuses `PATH_UIP`. The buffer stays 8192.
+- The `eq` argument of `fiberMatch` is `T -> T -> Fin 2` (1 for equal
+  values), not a `Dec`. So the rule needs no dependent Pi. The guest
+  passes `fiberEq T dec`.
+- `match-unequal.lang` gives `FIN_CASE` (`badCpl: the case 0 of Fin 1
+  fails: FIN_CASE: the case 5 of Fin 6 fails: PATH_END: the path at i1
+  is fiberMatch ...`): at unequal counts the map is stuck at a point, so
+  an inverse law does not check.
+- `examples/bag.lang` has more instances than the plan: `decPairFst`,
+  `decPairEq`, `sqPair`, `r3`, `pairR`, `rotR`, `coupleRot`, `cplEnd`,
+  `f6`, `g6`, `gSig`, `matchTab` and `matchCpl`. The json count stays 24
+  (`bag.json` is one file). `coupleRot`, `cplCount` and `matchCpl` are
+  Pi defs over `Fin 1`, so they have no JSON instance.
+- L11 is a cover mutant: no type-correct `decEqProd` ignores the second
+  component (the `inl` case needs a path of the payloads), so the domain
+  does not check, and each example fails. The first failing example is
+  `examples/algebra.lang`, not `bag.lang` (`decPairAt`).
+
+Mutants: L10 to L12 ran by hand in session 15, one at a time (`sd -s` at
+one site, `make -B check`, then `build/path-regressions` under the
+mutant; `sd -s` back). The `shasum` of the file before and after each
+mutant is equal. Each kill came from a repo test, not from a compile
+error.
+
+| Mutant | Change | Killed by |
+|---|---|---|
+| L10 | `randCount`: the `either` arms swapped (`=> 0`, `=> 1`) | `examples/bag.lang` (`countAt`: `PATH_END: the path at i1 is 2, but the type needs 1`); the evals `bag countAt`, `bag countPair` and `bag matchAt`; `bag.json`; C case "count stays stuck along a couple path" (expected `PATH_UIP`) |
+| L11 | `decEqProd`: `(db (payload x) (payload y))` to `(db (payload x) (payload x))` | each example (cover); the first is `examples/algebra.lang` (`TYPE_MISMATCH: decEqProd: the binder type PathP (fun _ => B) (payload x) (payload y) differs from the expected type PathP (fun _ => B) (payload x) (payload x)`); each C case (the first is "system conversion: order, values, coverage or refinement") |
+| L12 | `fiber_match`: `&& !seen` to `&& seen` (the fibers in reverse order) | `bag.json` (`matchTab`) and C case "match table" only: a consistent algebra, so `matchCpl` still checks and the evals pass, as the kickoff planned |
+
+### S6c staged review
+
+The original seven-argument `fiberMatch` could inhabit `Empty`: the
+checker accepted a search from `Fin 1` into `Fin 0` with no matching
+target. Passing that stuck value to `absurd` proved `Path Nat 0 1`.
+The inverse laws checked by `match` did not protect direct builtin calls.
+
+`fiberMatch A B T eq f g fallback x` now requires `fallback : A -> B`.
+When a literal search has no target at the required rank, it returns
+`fallback x`. `fiberAt` takes that map, and `match` takes forward and
+backward fallback maps before its laws. The example and refusal fixtures
+supply these maps, and successful matching keeps its existing results.
+The inverse and value laws still reject unequal fiber counts.
+
+Six new C cases cover the original contradiction, checking the fallback
+codomain, missing and exhausted target fibers, passing the source point
+to the fallback, and maps between empty carriers. `make check` passes:
+24 examples, 11 parse refusals, 69 check refusals, 61 evals, 24 JSON
+goldens, 4 build refusals, 6 regressions, 2 printer cases and 82 C path
+cases (0 failed). The clang check passes. No CI checks were weakened.

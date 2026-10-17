@@ -36,11 +36,11 @@ them as open items:
 | Monad | map and bind | `randPure x := (Fin 1, \_ -> x)`. `randMap` composes. The kit builtins `pure`, `map` and `bind` keep their names, so the `Rand` names start with `rand` (S6a, R2). `randBind` uses the Sigma of the coin spaces (O4) and takes the `isFinSet` proof of that Sigma as an argument (S6b, R3). The monad laws are paths made from `ua` of the Sigma unit and associativity equivalences. They are not conversions. S6b checks the left unit, right unit and associativity laws at literal instances over `Fin 3` (`examples/couple.lang`, R4). | S6 |
 | Equivalence | `σ : Ω ≃ Ω'` | `Equiv A B := Sigma (f : A -> B) (isEquiv f)`, with `isEquiv f` as contractible fibers (the CTT library form). `isoToEquiv` makes an equivalence from two inverse maps. | S3 |
 | Univalence | a path from `(Ω, f)` to `(Ω', g)` | `ua : Equiv A B -> Path U A B` through Glue types. Transport along `ua e` computes to `e` by definition (uaβ). A path in `FinSet` is a path in `U` and a path over it in `isFinSet`, which is a proposition. | S3, S5 |
-| Bijective coupling | `g ∘ σ = f` | `couple s h : Path (Rand T) (Om, f) (Om', g)` for `s : Equiv (El Om) (El Om')` and `h : (w : El Om) -> Path T (f w) (g (s w))`. A library def from `ua`, `uaArrow` (the CTT lemma that turns pointwise paths into a path over `ua`) and Sigma paths. | S6 |
-| Equal fiber sizes | equal distributions exactly when `σ` exists | Both directions are guest functions. Coupling to equal counts: `count` is invariant under transport. Equal counts to coupling: `match` makes `s` from the fibers in enumeration order. `match` needs decidable equality on `T` (O10). | S6 |
+| Bijective coupling | `g ∘ σ = f` | `couple s h : Path (Rand T) (Om, f) (Om', g)` for `s : Equiv (El Om) (El Om')` and `h : (w : El Om) -> Path T (f w) (g (s w))`. A library def from `ua`, `uaArrow` (the CTT lemma that turns pointwise paths into a path over `ua`) and Sigma paths. The domain def `couple T Om Om2 f g s h n` also takes the size path `n : Path Nat (card Om) (card Om2)`, because the kit has no pigeonhole (S6b, R5). The truncation part is `squash1` (S6b, R6). | S6 |
+| Equal fiber sizes | equal distributions exactly when `σ` exists | Both directions are guest functions. Coupling to equal counts: `count` is invariant under transport. Equal counts to coupling: `match` makes `s` from the fibers in enumeration order. `match` needs decidable equality on `T` (O10). S6c: the count is the domain def `randCount T dec r t` (a `carrierSum` of 1 or 0 by `dec`; `examples/formers.lang` declares a def `count`, so the domain name is `randCount`). The domain def `countCouple` is the direction "coupling to equal counts": the path of `randCount` along a path in `Rand T` (R9). The builtin `fiberMatch` gives the forward map between two literal carriers, with the fibers in enumeration order (R10). The domain def `match` makes `s` with `isoToEquiv` of the two `fiberAt` maps. It takes forward and backward fallback maps, the inverse laws, the value law `h` and the size path, and the check proves each law at a literal instance. At unequal counts a law does not check (`FIN_CASE`). | S6 |
 | Schnorr HVZK | `z = r + e·w`, `r ↦ r + e·w` on `Z_q` | Group: the subgroup of order 11 of the units mod 23, generator 2 (O5). Transcript: commitment, challenge, response. Coins: `(e, r)` (real) and `(e, z)` (simulated), both `Fin 11 * Fin 11`. `s (e, r) := (e, r + e*w)`. Real: `(g^r, e, r + e*w)`. Simulated: `(g^z * y^(-e), e, z)` with `y := g^w`. Each pointwise path is `refl` after enumeration (`finAll`, section 5). | S7 |
 | Graph isomorphism HVZK | | Graph: `Fin n -> Fin n -> Fin 2`. Coins: a challenge bit and a permutation. The example has n = 4 (24 permutations, 48 coins). The coin space is `Fin 2 * Fin 24`, and a table maps each index to its permutation (O9). Each permutation `p` also gives the loop `ua p` in `FinSet` at `Fin 4`. The 24 loops are distinct in the JSON output. | S7 |
-| Finite multisets | the set truncation of the groupoid | `Bag T := Trunc0 (Rand T)`. `Rand T` is a groupoid when `T` is a set. `count : Bag T -> T -> Nat` is an elimination into `Nat`, which is a set. | S6 |
+| Finite multisets | the set truncation of the groupoid | `Bag T := Trunc0 (Rand T)`. `Rand T` is a groupoid when `T` is a set. `count : Bag T -> T -> Nat` is an elimination into `Nat`, which is a set. S6c (R8 (a) fallback): `Rand T` is in `Type 1`, the `Trunc0` parameter is in `Type 0` and the kit has no cumulativity, so `Trunc0 (Rand T)` refuses `TYPE_MISMATCH`. The domain family `Trunc0One` is `Trunc0` with its parameter in `Type 1`, and `Bag T := Trunc0One (Rand T)`. The count is the domain def `countBag`, a fold into `Nat` with `isSetNat`. | S6 |
 
 ## 3. The no-irrelevance rule
 
@@ -264,6 +264,12 @@ are new or change:
   2 and rule 3 (R12); `examples/couple.lang`. A top-level `Path FinSet`
   and a top-level path in `Rand T` still stop with `OOM` at the JSON
   print, so `coupleRot` is a Pi def over `Fin 1`.
+  S6c (done): the domain defs `decEqProd` and `decEqSigmaFin` (R11), the
+  family `Trunc0One`, the defs `randCount`, `Bag`, `countBag` and
+  `countCouple` (R8, R9), the builtin `fiberMatch` and the defs
+  `fiberEq`, `fiberAt` and `match` (R10); `examples/bag.lang`. S6 (done):
+  the fiber theorem in both directions at literal instances. The
+  top-level `Path FinSet` loop still stops with `OOM` at the JSON print.
 - S7: the two HVZK examples of section 2 as instances: the real variable,
   the simulated variable and the path between them. Mutants: a wrong
   witness `w`, a wrong `s` and a non-bijective `s` must each give a check
@@ -287,7 +293,9 @@ are new or change:
 - O4: `bind` on `Rand` uses the Sigma of the coin spaces. This is the bag
   monad. Its distribution is the uniform one when each continuation has a
   coin space of the same size. A graded bind on the product coin space is
-  an option.
+  an option. Closed in S6b (ruling R3 (a)): `randBind` uses the Sigma of
+  the coin spaces, and the caller gives the `isFinSet` proof of that
+  Sigma. The graded bind is not in S6.
 - O5: the Schnorr group: the subgroup of order 11 mod 23 (default) or the
   additive group `Z_q` with generator 1.
 - O6: "JSON deserialization" read as the kit JSON document.
@@ -300,7 +308,10 @@ are new or change:
   (default), or as the loop type of `FinSet` at `Fin 4`. The second needs a
   `FinSet` proof for `Equiv (Fin 4) (Fin 4)` (a Lehmer code).
 - O10: `match` needs decidable equality on `T`. S6 proves it for `T` made
-  from `Fin`, products and Sigma over `Fin`.
+  from `Fin`, products and Sigma over `Fin`. Narrowed in S6c (ruling R11
+  (a)): the domain has `decEqFin`, `decEqNat`, `decEqProd` (the non-dependent
+  pair `(e : A) * B`) and `decEqSigmaFin` (at `(e : Fin a) * Fin b`). A
+  Sigma with a dependent second component has no decision yet.
 - O11: the `J` rule on `refl` is a path (CCHM). It is not a conversion.
   Closed in S2a: `JRefl` in `domain/domain.lang` is a path by `transp`
   on a constant line. The check refusal `j-refl-conv` shows that `refl`

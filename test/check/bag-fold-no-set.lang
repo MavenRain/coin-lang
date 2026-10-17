@@ -1,0 +1,4 @@
+-- A fold of Bag T (a Trunc0One) into Nat needs a case for each
+-- constructor: trunc0One and squash0One. This fold has the point case
+-- only, so it has no isSet proof of Nat.
+def f : Bag (Fin 3) -> Nat := fun (b : Bag (Fin 3)) => fold (fun (r : Rand (Fin 3)) => card (witness r)) b

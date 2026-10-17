@@ -525,6 +525,54 @@ int main(void) {
     "def f : C -> Nat := fun (x : C) => finVal 3 (witness x)\n"
     "def p : Path (C -> Nat) f f := refl\n",
     "\"value\":{\"paths\":[{\"refl\":0},{\"refl\":2},{\"refl\":2}]}");
+  /* S6c item 9 (R9 (a)): along the coupling of r3 and rotR the count of 0
+     is a path from 1 to 1. Inside the path the carrier is a Glue type, so
+     carrierSum stays stuck (R7 (a)), so the path is not refl of 1. A count
+     that reduces at a Glue carrier converts, so this case kills it. */
+  failed += !domain_refuses("count stays stuck along a couple path", "",
+    "def r3 : Rand (Fin 3) := pack (finSetFin 3) (fun (x : Fin 3) => finAdd 3 x 1)\n"
+    "def rotR : Rand (Fin 3) := pack (finSetFin 3) (fun (x : Fin 3) => x)\n"
+    "def coupleRot : (x : Fin 1) -> Path (Rand (Fin 3)) r3 rotR := fun (x : Fin 1) => couple (Fin 3) (finSetFin 3) (finSetFin 3) "
+    "(fun (x : Fin 3) => finAdd 3 x 1) (fun (x : Fin 3) => x) (isoToEquiv (Fin 3) (Fin 3) (fun (r : Fin 3) => finAdd 3 r 1) "
+    "(fun (r : Fin 3) => finAdd 3 r 2) (fun (k : Fin 3) => refl) (fun (k : Fin 3) => refl)) (fun (w : Fin 3) => refl) refl\n"
+    "def bad : Path (Path Nat 1 1) (fun (i : I) => randCount (Fin 3) (decEqFin 3) (coupleRot 0 @ i) 0) (fun (_ : I) => 1) := refl\n",
+    "PATH_UIP");
+  /* S6c item 10 (R10 (a)): fiberMatch sends the coin k of f6 to the coin
+     of gSig with the same rank in the fiber of f6 k. The two bounds of the
+     carrier are different, so the fibers in reverse order or a pair in
+     reverse order change the table. */
+  failed += !json_contains("match table",
+    "def f6 : Fin 6 -> Fin 2 := fun (k : Fin 6) => finCase 6 k 0 1 1 0 1 0\n"
+    "def gSig : ((e : Fin 2) * Fin 3) -> Fin 2 := fun (p : (e : Fin 2) * Fin 3) => "
+    "finCase 2 (witness p) (finCase 3 (payload p) 1 0 0) (finCase 3 (payload p) 1 0 1)\n"
+    "def t : Rand ((e : Fin 2) * Fin 3) := pack (finSetFin 6) (fun (k : Fin 6) => "
+    "fiberMatch (Fin 6) ((e : Fin 2) * Fin 3) (Fin 2) (fiberEq (Fin 2) (decEqFin 2)) f6 gSig (fun (_ : Fin 6) => pack 0 0) k)\n",
+    "\"value\":{\"coins\":6,\"values\":[{\"witness\":0,\"payload\":1},{\"witness\":0,\"payload\":0},"
+    "{\"witness\":1,\"payload\":0},{\"witness\":0,\"payload\":2},{\"witness\":1,\"payload\":2},"
+    "{\"witness\":1,\"payload\":1}]}");
+  /* A partial search must not create an inhabitant of Empty. */
+  failed += !domain_refuses("fiberMatch cannot construct Empty", "",
+    "def impossible : Empty := fiberMatch (Fin 1) Empty Nat (fun (_ : Nat) (_ : Nat) => 1) "
+    "(fun (_ : Fin 1) => 0) (fun (_ : Empty) => 0) 0\n"
+    "def falsePath : Path Nat 0 1 := absurd (Path Nat 0 1) impossible\n",
+    "TYPE_ARITY");
+  failed += !domain_refuses("fiberMatch checks the fallback codomain", "",
+    "def impossible : Empty := fiberMatch (Fin 1) Empty Nat (fun (_ : Nat) (_ : Nat) => 1) "
+    "(fun (_ : Fin 1) => 0) (fun (_ : Empty) => 0) (fun (_ : Fin 1) => 0) 0\n",
+    "FIN_CASE");
+  failed += !domain_accepts("fiberMatch uses its fallback for a missing fiber", "",
+    "def p : Path (Fin 2) (fiberMatch (Fin 2) (Fin 2) (Fin 2) (fiberEq (Fin 2) (decEqFin 2)) "
+    "(fun (_ : Fin 2) => 0) (fun (_ : Fin 2) => 1) (fun (_ : Fin 2) => 1) 0) 1 := refl\n");
+  failed += !domain_accepts("fiberMatch uses its fallback for an exhausted fiber", "",
+    "def p : Path (Fin 2) (fiberMatch (Fin 2) (Fin 2) (Fin 2) (fiberEq (Fin 2) (decEqFin 2)) "
+    "(fun (_ : Fin 2) => 0) (fun (k : Fin 2) => k) (fun (_ : Fin 2) => 1) 1) 1 := refl\n");
+  failed += !domain_accepts("fiberMatch permits empty source and target", "",
+    "def f : Empty -> Empty := fun (x : Empty) => fiberMatch Empty Empty Nat "
+    "(fun (_ : Nat) (_ : Nat) => 1) (fun (_ : Empty) => 0) (fun (_ : Empty) => 0) "
+    "(fun (k : Empty) => k) x\n");
+  failed += !domain_accepts("fiberMatch passes the source point to the fallback", "",
+    "def p : Path (Fin 2) (fiberMatch (Fin 2) (Fin 2) (Fin 2) (fiberEq (Fin 2) (decEqFin 2)) "
+    "(fun (_ : Fin 2) => 0) (fun (_ : Fin 2) => 1) (fun (k : Fin 2) => k) 1) 1 := refl\n");
   printf("path regressions: %d failed\n", failed);
   return failed != 0;
 }

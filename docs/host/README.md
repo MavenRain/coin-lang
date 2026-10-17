@@ -123,6 +123,22 @@ trust point (`SPEC.md` section 8). A Nat or Fin operation on a glue
 element stays stuck (S6a), so a transport of a point along a `ua` line of
 `Fin n` prints its term (rule 6).
 
+`fiberMatch A B T eq f g fallback x` (S6c), with `eq : T -> T -> Fin 2`
+(1 for equal values), `f : A -> T`, `g : B -> T`, `fallback : A -> B`
+and `x : A`, is a point of
+`B`. Let `k` be the number of points of `A` before `x` whose value is
+`f x`. The result is the point `k` of `B` (counted from 0) whose value
+is `f x`, in the enumeration order of the `FinSet` row. It reduces only
+when `A` and `B` are literal carriers of the `carrierSum` kind. It stays
+stuck when a carrier is not literal or when `x` is not a point of `A`.
+When `B` has no such point, it returns `fallback x`. The fallback is
+required to keep a failed search from constructing a value of `Empty`.
+`fiberAt` takes the same fallback map, and `match` takes forward and
+backward fallback maps after `f` and `g`, before its laws. It is not a trust
+point: the domain def `match` takes the inverse laws, and the check
+proves them (`SPEC.md` section 8). In `examples/bag.lang`, `matchAt`
+gives `pack 0 2`.
+
 ## Glue
 
 | Builtin | Form | Rules |
@@ -207,7 +223,12 @@ It holds the equivalence library: `isContr`, `fiber`, `isEquiv`, `Equiv`,
 holds `Rand`, `randPure`, `randMap`, `randBind` and `couple` (S6).
 `randBind` takes the `isFinSet` proof of its Sigma coin space as an
 argument (R3), and `couple s h n` takes the size path `n` (R5): the kit
-has no pigeonhole. A program
+has no pigeonhole. S6c adds `decEqProd` and `decEqSigmaFin` (R11), the
+family `Trunc0One` (`Trunc0` with its parameter in `Type 1`, R8), and the
+defs `randCount`, `Bag` (`Trunc0One (Rand T)`), `countBag`,
+`countCouple`, `fiberEq`, `fiberAt` and `match` (R9, R10). The count def
+is `randCount`, not `count`, because `examples/formers.lang` declares a
+def `count`. A program
 def cannot have the name of a domain constructor, for example `loop`
 (`REFUSE_NAME`). An `Equiv` value holds a function, so a
 program def of an `Equiv` type is refused by `langc build`

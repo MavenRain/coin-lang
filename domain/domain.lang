@@ -17,6 +17,11 @@ family Trunc1 (A : Type 0) := trunc1 (truncOf : A) | squash1 (squashFrom : Trunc
 -- paths with the same ends, so the squash0 fold case has the type isSet
 -- RES (R8 (a)). The case binds the folded ends and the folded paths.
 family Trunc0 (A : Type 0) := trunc0 (trunc0Of : A) | squash0 (squash0From : Trunc0 A) (squash0To : Trunc0 A) (squash0Left : Path (Trunc0 A) squash0From squash0To) (squash0Right : Path (Trunc0 A) squash0From squash0To) (i : I) (j : I) [ ~i -> squash0Left @ j, i -> squash0Right @ j, ~j -> squash0From, j -> squash0To ]
+-- The set truncation at Type 1 (S6c item 9, ruling R8 (a) fallback): the
+-- kit has no cumulativity and the Trunc0 parameter is in Type 0, so
+-- Trunc0 (Rand T) refuses TYPE_MISMATCH. Trunc0One is Trunc0 with its
+-- parameter in Type 1; its fold cases are the same.
+family Trunc0One (A : Type 1) := trunc0One (trunc0OneOf : A) | squash0One (squash0OneFrom : Trunc0One A) (squash0OneTo : Trunc0One A) (squash0OneLeft : Path (Trunc0One A) squash0OneFrom squash0OneTo) (squash0OneRight : Path (Trunc0One A) squash0OneFrom squash0OneTo) (i : I) (j : I) [ ~i -> squash0OneLeft @ j, i -> squash0OneRight @ j, ~j -> squash0OneFrom, j -> squash0OneTo ]
 -- The set quotient (S4c, R5 (a)): quotEq is a path from quot A R a to
 -- quot A R b for each proof r of R a b. The type of the R parameter uses
 -- the A parameter. quotSquash has the squash0 shape at Quot A R, so the
@@ -169,6 +174,16 @@ def hedberg : (A : Type 0) -> ((a : A) -> (b : A) -> Dec (Path A a b)) -> isSet 
       j -> hedbergSquare A dec a b q @ i @ k ]) a
 def isSetNat : isSet Nat := hedberg Nat decEqNat
 def isSetFin : (n : Nat) -> isSet (Fin n) := fun (n : Nat) => hedberg (Fin n) (decEqFin n)
+-- Decidable equality of pairs (S6c item 8, ruling R11 (a)). decEqProd
+-- decides the first components, then the second ones. Each inr case maps
+-- a path of pairs to a path of one component (a projection along the
+-- path). decEqSigmaFin is decEqProd at Fin a and Fin b: the second
+-- component of Sigma (e : Fin a) (Fin b) does not depend on e.
+def decEqProd : (A : Type 0) -> (B : Type 0) -> ((a : A) -> (b : A) -> Dec (Path A a b)) -> ((a : B) -> (b : B) -> Dec (Path B a b)) -> (x : (e : A) * B) -> (y : (e : A) * B) -> Dec (Path ((e : A) * B) x y) :=
+  fun (A : Type 0) (B : Type 0) (da : (a : A) -> (b : A) -> Dec (Path A a b)) (db : (a : B) -> (b : B) -> Dec (Path B a b)) (x : (e : A) * B) (y : (e : A) * B) =>
+    either (fun (p : Path A (witness x) (witness y)) => either (fun (q : Path B (payload x) (payload y)) => inl (fun (i : I) => pack (p @ i) (q @ i))) (fun (nq : Not (Path B (payload x) (payload y))) => inr (fun (r : Path ((e : A) * B) x y) => nq (fun (i : I) => payload (r @ i)))) (db (payload x) (payload y))) (fun (np : Not (Path A (witness x) (witness y))) => inr (fun (r : Path ((e : A) * B) x y) => np (fun (i : I) => witness (r @ i)))) (da (witness x) (witness y))
+def decEqSigmaFin : (a : Nat) -> (b : Nat) -> (x : (e : Fin a) * Fin b) -> (y : (e : Fin a) * Fin b) -> Dec (Path ((e : Fin a) * Fin b) x y) :=
+  fun (a : Nat) (b : Nat) => decEqProd (Fin a) (Fin b) (decEqFin a) (decEqFin b)
 -- Finite sets (S5c item 10, ruling R6 (a)): isFinSet A holds the size n
 -- outside the truncation, as in agda/cubical, so card is a projection.
 -- FinSet is in Type 1 (Type 0 : Type 1, no cumulativity). El is the
@@ -212,3 +227,42 @@ def couple : (T : Type 0) -> (Om : FinSet) -> (Om2 : FinSet) -> (f : El Om -> T)
         (transp (fun (j : I) => Trunc1 (Equiv (ua (El Om) (El Om2) s @ (i \/ ~j)) (Fin (n @ (i \/ ~j))))) i (payload (payload Om2)))
         i)))
       (uaArrow (El Om) (El Om2) T s f g h @ i)
+-- Counts (S6c item 9, rulings R8 and R9 (a)). randCount T dec r t is the
+-- number of coins of r whose value is t: the carrierSum of 1 where dec
+-- gives a path and 0 where it does not. examples/formers.lang declares a
+-- def count, and a domain def is a core name, so this def is randCount.
+-- Bag T is Trunc0One (Rand T): Rand T is in Type 1 and the Trunc0
+-- parameter is in Type 0. countBag reads a count through the truncation
+-- by a fold into Nat with isSetNat. countCouple is the direction from a
+-- coupling to equal counts: the path of randCount along a path in Rand T.
+def randCount : (T : Type 0) -> ((a : T) -> (b : T) -> Dec (Path T a b)) -> Rand T -> T -> Nat :=
+  fun (T : Type 0) (dec : (a : T) -> (b : T) -> Dec (Path T a b)) (r : Rand T) (t : T) => carrierSum (El (witness r)) (fun (w : El (witness r)) => either (fun (_ : Path T (payload r w) t) => 1) (fun (_ : Not (Path T (payload r w) t)) => 0) (dec (payload r w) t))
+def Bag : (T : Type 0) -> Type 1 := fun (T : Type 0) => Trunc0One (Rand T)
+def countBag : (T : Type 0) -> ((a : T) -> (b : T) -> Dec (Path T a b)) -> Bag T -> T -> Nat :=
+  fun (T : Type 0) (dec : (a : T) -> (b : T) -> Dec (Path T a b)) (b : Bag T) (t : T) => fold (fun (r : Rand T) => randCount T dec r t) isSetNat b
+def countCouple : (T : Type 0) -> (dec : (a : T) -> (b : T) -> Dec (Path T a b)) -> (x : Rand T) -> (y : Rand T) -> Path (Rand T) x y -> (t : T) -> Path Nat (randCount T dec x t) (randCount T dec y t) :=
+  fun (T : Type 0) (dec : (a : T) -> (b : T) -> Dec (Path T a b)) (x : Rand T) (y : Rand T) (p : Path (Rand T) x y) (t : T) => fun (i : I) => randCount T dec (p @ i) t
+-- Match (S6c item 10, ruling R10 (a)). fiberEq T dec a b is 1 when dec
+-- gives a path and 0 when it does not. fiberAt sends a coin x of Om to the
+-- coin of Om2 with the same rank in the fiber of f x: the builtin
+-- fiberMatch. Its fallback map is used if that rank has no target coin.
+-- Requiring that map prevents a failed search from inhabiting Empty.
+-- match is the direction from equal counts to a coupling: the
+-- two fiberAt maps, their inverse laws s and r, the value law h and the
+-- size path n give a couple. When the counts are not equal, a law does
+-- not check at the literal instance.
+def fiberEq : (T : Type 0) -> ((a : T) -> (b : T) -> Dec (Path T a b)) -> T -> T -> Fin 2 :=
+  fun (T : Type 0) (dec : (a : T) -> (b : T) -> Dec (Path T a b)) (a : T) (b : T) => either (fun (_ : Path T a b) => 1) (fun (_ : Not (Path T a b)) => 0) (dec a b)
+def fiberAt : (T : Type 0) -> (dec : (a : T) -> (b : T) -> Dec (Path T a b)) -> (Om : FinSet) -> (Om2 : FinSet) -> (f : El Om -> T) -> (g : El Om2 -> T) -> (El Om -> El Om2) -> El Om -> El Om2 :=
+  fun (T : Type 0) (dec : (a : T) -> (b : T) -> Dec (Path T a b)) (Om : FinSet) (Om2 : FinSet) (f : El Om -> T) (g : El Om2 -> T) (fallback : El Om -> El Om2) (x : El Om) => fiberMatch (El Om) (El Om2) T (fiberEq T dec) f g fallback x
+def match : (T : Type 0) -> (dec : (a : T) -> (b : T) -> Dec (Path T a b)) -> (Om : FinSet) -> (Om2 : FinSet) -> (f : El Om -> T) -> (g : El Om2 -> T) ->
+  (forwardDefault : El Om -> El Om2) -> (backwardDefault : El Om2 -> El Om) ->
+  (s : (y : El Om2) -> Path (El Om2) (fiberAt T dec Om Om2 f g forwardDefault (fiberAt T dec Om2 Om g f backwardDefault y)) y) ->
+  (r : (x : El Om) -> Path (El Om) (fiberAt T dec Om2 Om g f backwardDefault (fiberAt T dec Om Om2 f g forwardDefault x)) x) ->
+  (h : (w : El Om) -> Path T (f w) (g (fiberAt T dec Om Om2 f g forwardDefault w))) -> (n : Path Nat (card Om) (card Om2)) -> Path (Rand T) (pack Om f) (pack Om2 g) :=
+  fun (T : Type 0) (dec : (a : T) -> (b : T) -> Dec (Path T a b)) (Om : FinSet) (Om2 : FinSet) (f : El Om -> T) (g : El Om2 -> T) =>
+  fun (forwardDefault : El Om -> El Om2) (backwardDefault : El Om2 -> El Om) =>
+  fun (s : (y : El Om2) -> Path (El Om2) (fiberAt T dec Om Om2 f g forwardDefault (fiberAt T dec Om2 Om g f backwardDefault y)) y) =>
+  fun (r : (x : El Om) -> Path (El Om) (fiberAt T dec Om2 Om g f backwardDefault (fiberAt T dec Om Om2 f g forwardDefault x)) x) =>
+  fun (h : (w : El Om) -> Path T (f w) (g (fiberAt T dec Om Om2 f g forwardDefault w))) (n : Path Nat (card Om) (card Om2)) =>
+    couple T Om Om2 f g (isoToEquiv (El Om) (El Om2) (fiberAt T dec Om Om2 f g forwardDefault) (fiberAt T dec Om2 Om g f backwardDefault) s r) h n

@@ -29,7 +29,7 @@ static const char *const OP_NAMES[] = {
   [OP_FIN_VAL] = "finVal", [OP_FIN_EQ] = "finEq", [OP_FIN_CASE] = "finCase",
   [OP_DEC_EQ_FIN] = "decEqFin", [OP_DEC_EQ_NAT] = "decEqNat",
   [OP_GLUE] = "Glue", [OP_GLUE_ELEM] = "glue", [OP_UNGLUE] = "unglue",
-  [OP_CARRIER_SUM] = "carrierSum"
+  [OP_CARRIER_SUM] = "carrierSum", [OP_FIBER_MATCH] = "fiberMatch"
 };
 
 /* The number of arguments of each operation. VARIES: it comes from the
@@ -51,7 +51,7 @@ static const unsigned char OP_ARITY[] = {
   [OP_FIN_NEG] = 2, [OP_FIN_MUL] = 3, [OP_FIN_VAL] = 2, [OP_FIN_EQ] = 3,
   [OP_FIN_CASE] = VARIES, [OP_DEC_EQ_FIN] = 3, [OP_DEC_EQ_NAT] = 2,
   [OP_GLUE] = 3, [OP_GLUE_ELEM] = 3,
-  [OP_UNGLUE] = 4, [OP_CARRIER_SUM] = 2
+  [OP_UNGLUE] = 4, [OP_CARRIER_SUM] = 2, [OP_FIBER_MATCH] = 8
 };
 
 typedef enum {
@@ -1290,6 +1290,104 @@ static const Value *carrier_sum(Machine *m, const Value *const *a, uint32_t n) {
   return val_nat(m, sum);
 }
 
+/* The next point of the literal carrier T at the cursor (*I, *J), in the
+   carrierSum order: 1 with *PT the point, 0 at the end, -1 when T is not a
+   literal Fin a or Sigma (e : Fin a) (Fin b), -2 on an error. */
+static int next_point(Machine *m, const Value *t, uint64_t *i, uint64_t *j, const Value **pt) {
+  if (val_is(t, OP_FIN) && t->args[0]->kind == VAL_NAT) {
+    if (*i >= t->args[0]->nat)
+      return 0;
+    *pt = val_nat(m, (*i)++);
+    return 1;
+  }
+  if (t->kind != VAL_SIGMA || !val_is(t->dom, OP_FIN) || t->dom->args[0]->kind != VAL_NAT)
+    return -1;
+  for (; *i < t->dom->args[0]->nat; (*i)++, *j = 0) {
+    const Value *b = closure_apply(m, t, val_nat(m, *i));
+    const Value *pair[2];
+    if (b == NULL || !val_is(b, OP_FIN) || b->args[0]->kind != VAL_NAT)
+      return b == NULL ? -2 : -1;
+    if (*j < b->args[0]->nat) {
+      pair[0] = val_nat(m, *i);
+      pair[1] = val_nat(m, (*j)++);
+      *pt = val_op(m, VAL_OP, OP_PACK, 0, 0, pair, 2);
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/* 1 when the point P of a literal carrier is the value X: the same number,
+   or a pack of the same two numbers. */
+static int same_point(const Value *p, const Value *x) {
+  if (p->kind == VAL_NAT)
+    return x->kind == VAL_NAT && x->nat == p->nat;
+  return val_is(x, OP_PACK) && x->argc == 2u && x->args[0]->kind == VAL_NAT && x->args[1]->kind == VAL_NAT &&
+         x->args[0]->nat == p->args[0]->nat && x->args[1]->nat == p->args[1]->nat;
+}
+
+/* eq FX (FN P) in *BIT. 0 when it is not a number: *OUT is then the trap,
+   the stuck match or NULL. */
+static int fiber_bit(Machine *m, const Value *eq, const Value *fx, const Value *fn, const Value *p, const Value *stuck, uint64_t *bit, const Value **out) {
+  const Value *v = apply_value(m, fn, p);
+  const Value *e = v == NULL || v->kind == VAL_TRAP ? v : apply_value(m, eq, fx);
+  const Value *r = e == NULL || e->kind == VAL_TRAP ? e : apply_value(m, e, v);
+  *out = r == NULL || r->kind == VAL_TRAP ? r : stuck;
+  if (r == NULL || r->kind != VAL_NAT)
+    return 0;
+  *bit = r->nat;
+  return 1;
+}
+
+/* fiberMatch A B T eq f g fallback x: the forward map of the fiber
+   matching. When x is the k-th point of A (in the carrierSum order) with
+   eq (f x) (f p) = 1, the result is the k-th point y of B with eq (f x)
+   (g y) = 1. It computes only at literal carriers A and B and a point x
+   of A; else it is stuck. When B has no k-th such point, it returns
+   fallback x. This map is required by the type so that a failed search
+   cannot create an element of an empty type. The inverse and value laws
+   of match are still checked at each point. */
+static const Value *fiber_match(Machine *m, const Value *const *a, uint32_t n) {
+  const Value *stuck = val_op(m, VAL_STUCK, OP_FIBER_MATCH, 0, 0, a, n);
+  const Value *out = stuck;
+  const Value *pt = NULL;
+  const Value *fx;
+  uint64_t i = 0;
+  uint64_t j = 0;
+  uint64_t rank = 0;
+  uint64_t bit = 0;
+  uint32_t k;
+  int seen = 0;
+  int more;
+  for (k = 0; k < n; k++)
+    if (a[k]->kind == VAL_TRAP)
+      return a[k];
+  fx = apply_value(m, a[4], a[7]);
+  if (fx == NULL || fx->kind == VAL_TRAP)
+    return fx;
+  for (more = next_point(m, a[0], &i, &j, &pt); more == 1; more = next_point(m, a[0], &i, &j, &pt)) {
+    if (same_point(pt, a[7])) {
+      seen = 1;
+      continue;
+    }
+    if (!fiber_bit(m, a[3], fx, a[4], pt, stuck, &bit, &out))
+      return out;
+    rank += bit == 1u && !seen ? 1u : 0u;
+  }
+  if (more != 0 || !seen)
+    return more == -2 ? NULL : stuck;
+  i = 0;
+  j = 0;
+  for (more = next_point(m, a[1], &i, &j, &pt); more == 1; more = next_point(m, a[1], &i, &j, &pt)) {
+    if (!fiber_bit(m, a[3], fx, a[5], pt, stuck, &bit, &out))
+      return out;
+    if (bit == 1u && rank == 0u)
+      return pt;
+    rank -= bit == 1u ? 1u : 0u;
+  }
+  return more == 0 ? apply_value(m, a[6], a[7]) : more == -2 ? NULL : stuck;
+}
+
 /* natEq and finEq: 1 in Fin 2 when X = Y, else 0. */
 static const Value *eq_bit(Machine *m, uint64_t x, uint64_t y) {
   return val_nat(m, x == y ? 1u : 0u);
@@ -1931,6 +2029,7 @@ static const Value *transp_data(Machine *m, const Value *head, const Value *line
   case OP_NAT_SUB:
   case OP_NAT_MUL:
   case OP_CARRIER_SUM:
+  case OP_FIBER_MATCH:
   case OP_SUCC:
   case OP_NAT_EQ:
   case OP_NAT_LE:
@@ -2897,6 +2996,8 @@ static const Value *reduce_op(Machine *m, Op op, uint32_t inst, uint32_t field, 
     return nat_mul(m, a, n);
   case OP_CARRIER_SUM:
     return carrier_sum(m, a, n);
+  case OP_FIBER_MATCH:
+    return fiber_match(m, a, n);
   case OP_SUCC:
     return nat_succ(m, a, n);
   case OP_FIN_ADD:
